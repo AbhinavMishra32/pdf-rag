@@ -46,7 +46,8 @@ const worker = new Worker('file-upload-queue', async job => {
         console.warn('Qdrant call failed (skipping):', (err as any)?.message);
     }
 
-    vectorStore.addDocuments(chunkedDocs);
+    const store = await vectorStore();
+    await store.addDocuments(chunkedDocs);
 
     return { pages: loadedPages.length, originalName, chunks: chunkedDocs.length };
 }, { connection });
