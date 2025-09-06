@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
+/* Light theme tokens */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fdfdfd; /* page background */
+  --foreground: #111418; /* primary text */
+  --surface: #ffffff; /* card/header surface */
+  --surface-alt: #f2f5f9; /* subtle panels */
+  --border-color: #d9dee3;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Removed unsupported @theme rule; mapping kept via CSS variables above */
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0d1117;
+    --foreground: #e6eaf0;
+    --surface: #161b22;
+    --surface-alt: #1d2530;
+    --border-color: #2e3944;
   }
+}
+
+/* Explicit dark class for next-themes */
+.dark {
+  --background: #0d1117;
+  --foreground: #e6eaf0;
+  --surface: #161b22;
+  --surface-alt: #1d2530;
+  --border-color: #2e3944;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  /* Smooth theme swap (next-themes disables during change) */
+  transition: background-color .25s ease, color .25s ease;
+}
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
 }
