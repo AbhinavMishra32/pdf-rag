@@ -1,31 +1,56 @@
 import { Worker } from 'bullmq';
 import { connection } from '@/lib/queue';
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { QdrantVectorStore } from "@langchain/qdrant";
-import { Document } from "@langchain/core/documents";
-import type { AttributeInfo } from "langchain/chains/query_constructor";
+// (Embeddings & vector store imports removed for now)
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-
-import { QdrantClient } from "@qdrant/js-client-rest";
+import { CharacterTextSplitter } from "@langchain/textsplitters";
+import { embeddings, qdrantClient } from "@/lib/vectordb";
+import { OpenAIEmbeddings } from '@langchain/openai';
+import { QdrantVectorStore } from '@langchain/qdrant';
 
 const worker = new Worker('file-upload-queue', async job => {
-    console.log(`Processing job ${job.id} of type ${job.name}: `, job.data);
-        const { b64, originalName } = job.data || {};
-        if (!b64) {
-            throw new Error(`No base64 data provided for job ${job.id}`);
-        }
+    console.log(`Processing job ${job.id} of type ${job.name}`);
+    const { b64, originalName } = job.data || {};
+    if (!b64) {
+        throw new Error(`No base64 data provided for job ${job.id}`);
+    }
 
-        const buffer = Buffer.from(b64, 'base64');
-        // PDFLoader from @langchain/community accepts a FilePath string OR a Blob-like
-        // We create a temporary in-memory blob via a small shim using a Uint8Array.
-        // If this fails in this environment, you'd need a custom loader.
-        const uint8 = new Uint8Array(buffer);
-        const pdfLoader = new PDFLoader(new Blob([uint8]));
-        const documents = await pdfLoader.load();
-        console.log(`Loaded ${documents.length} pages from in-memory PDF '${originalName}'`);
+    const buffer = Buffer.from(b64, 'base64');
+    const uint8 = new Uint8Array(buffer);
+    const pdfLoader = new PDFLoader(new Blob([uint8]));
+    const documents = await pdfLoader.load();
+    console.log(`Loaded ${documents.length} pages from in-memory PDF '${originalName}'`);
 
-    // Simulate additional processing time if needed
-    // await new Promise(r => setTimeout(r, 500));
+    const textSplitter = new CharacterTextSplitter({
+        chunkSize: 100,
+        chunkOverlap: 0,
+    });
+
+    const texts = await textSplitter.splitDocuments(documents);
+    // console.log(
+    //   'texts:',
+    //   JSON.stringify(
+    //     texts.map((d, i) => ({
+    //       index: i,
+    //       pageContent: d.pageContent,
+    //       metadata: d.metadata,
+    //     })),
+    //     null,
+    //     2
+    //   )
+    // );
+
+
+    try {
+        const result = await qdrantClient?.getCollections();
+        console.log('List of collections:', result?.collections);
+    } catch (err) {
+        console.warn('Qdrant call failed (skipping):', (err as any)?.message);
+    }
+
+    const vectorStore = await QdrantVectorStore.fromDocuments(documents, embeddings, {
+        client: qdrantClient ?? undefined,
+        collectionName: "pdf-collection",
+    });
 
     return { pages: documents.length, originalName };
 }, { connection });

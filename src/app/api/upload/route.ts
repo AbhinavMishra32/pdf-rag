@@ -12,8 +12,6 @@ export async function POST(request: Request) {
             });
         }
 
-        // STATeless env: no writable FS. Embed file bytes (base64) into job.
-        // NOTE: For large PDFs this is memory heavy; switch to object storage in prod.
         const arrayBuffer = await file.arrayBuffer();
         const b64 = Buffer.from(arrayBuffer).toString('base64');
         const job = await myQueue.add('file-upload', {
