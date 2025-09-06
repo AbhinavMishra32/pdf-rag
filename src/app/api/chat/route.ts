@@ -15,9 +15,13 @@ export async function POST(request: Request) {
     }
 
     const store = await vectorStore();
-    const docs = await store.similaritySearch(userQuery, 4);
+    const scored = await store.similaritySearchWithScore(userQuery, 8);
+    const THRESHOLD = 0.6; // lower = more similar
+    const filtered = scored
+        .filter(([, score]) => typeof score === 'number' && score <= THRESHOLD)
+        .slice(0, 4);
 
-    const sources = docs.map((d: any, i: number) => {
+    const sources = filtered.map(([d, _score], i) => {
         const meta = d?.metadata || {};
         const page = meta.loc?.pageNumber ?? meta.page ?? null;
         return {
@@ -27,11 +31,11 @@ export async function POST(request: Request) {
         };
     });
 
-    const contextText = sources
-        .map(s => `[Doc ${s.doc}${s.page !== null ? ` p${s.page}` : ''}] ${s.snippet}`)
-        .join('\n');
+    const contextText = sources.length
+        ? sources.map(s => `[Doc ${s.doc}${s.page !== null ? ` p${s.page}` : ''}] ${s.snippet}`).join('\n')
+        : '(no matching context)';
 
-    const systemPrompt = `You are a helpful assistant. Only use the context below. If you don't see the answer, say you don't know.\n\nContext:\n${contextText}\n\nQuestion: ${userQuery}`;
+    const systemPrompt = `You are a helpful assistant. You may get zero or more context snippets. If the answer is not clearly in the context, reply exactly: "I don't know based on the stored documents." Do not guess.\n\nContext:\n${contextText}\n\nQuestion: ${userQuery}`;
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const chat = await client.chat.completions.create({
