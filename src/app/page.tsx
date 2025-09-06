@@ -1,65 +1,141 @@
 
 "use client"
-import FileUpload from "@/components/file-upload";
-import { useState } from "react";
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { File as FileIcon } from 'lucide-react'
 const PdfViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
 
 export default function Home() {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const handleUpload = async (files: File[]) => {
-    const formData = new FormData();
+  type DocumentStatus = 'uploading' | 'processing' | 'indexed' | 'failed'
+  type DocumentEntry = { id: string; file: File; jobId?: string; status: DocumentStatus }
 
-    const file = files[0]
-    setUploadedFile(file)
-    formData.append('file', file)
-    console.log('Uploaded file:', file)
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData
-    })
-    console.log('Upload response:', res);
+  const [documents, setDocuments] = useState<DocumentEntry[]>([])
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
+  const pollIntervals = useRef<Record<string, any>>({})
+
+  const currentDocument = documents.find(d => d.id === currentDocumentId) || null
+
+  function startStatusPolling(jobId: string, documentId: string) {
+    if (pollIntervals.current[documentId]) clearInterval(pollIntervals.current[documentId])
+    pollIntervals.current[documentId] = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/jobs/status?jobId=${jobId}`)
+        if (!response.ok) return
+        const json = await response.json()
+        if (json.state === 'completed') {
+          setDocuments(list => list.map(doc => doc.id === documentId ? { ...doc, status: 'indexed' } : doc))
+          clearInterval(pollIntervals.current[documentId]); delete pollIntervals.current[documentId]
+        } else if (json.state === 'failed') {
+          setDocuments(list => list.map(doc => doc.id === documentId ? { ...doc, status: 'failed' } : doc))
+          clearInterval(pollIntervals.current[documentId]); delete pollIntervals.current[documentId]
+        }
+      } catch {}
+    }, 2000)
   }
+
+  async function uploadDocument(file: File) {
+    const id = crypto.randomUUID()
+    setDocuments(list => [{ id, file, status: 'uploading' }, ...list])
+    if (!currentDocumentId) setCurrentDocumentId(id)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch('/api/upload', { method: 'POST', body: formData })
+      const json = await response.json()
+      if (!response.ok || !json.jobId) throw new Error(json.error || 'upload failed')
+      setDocuments(list => list.map(doc => doc.id === id ? { ...doc, jobId: json.jobId, status: 'processing' } : doc))
+      startStatusPolling(json.jobId, id)
+    } catch (err) {
+      console.error(err)
+      setDocuments(list => list.map(doc => doc.id === id ? { ...doc, status: 'failed' } : doc))
+    }
+  }
+
+  function handleFileList(list: FileList | null) {
+    if (!list) return
+    Array.from(list).filter(f => f.type === 'application/pdf').forEach(uploadDocument)
+  }
+
+  const [dragActive, setDragActive] = useState(false)
+  function onFileInputChange(e: React.ChangeEvent<HTMLInputElement>) { handleFileList(e.target.files) }
+  function handleDrop(e: React.DragEvent) { e.preventDefault(); setDragActive(false); handleFileList(e.dataTransfer.files) }
+  function handleDrag(e: React.DragEvent) { e.preventDefault(); if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true); else if (e.type === 'dragleave') setDragActive(false) }
+
+  useEffect(() => () => { Object.values(pollIntervals.current).forEach(clearInterval) }, [])
 
   return (
     <div className="min-h-[calc(100vh-4rem)] w-screen flex">
-      <aside className="w-[30vw] min-h-full p-4 xl:p-6 border-r border-[var(--border-color)] bg-[var(--surface-alt)]/50 dark:bg-[var(--surface-alt)]/40 backdrop-blur-sm flex flex-col">
-        <FileUpload
-          file={uploadedFile}
-          onFileChange={setUploadedFile}
-          onUpload={handleUpload}
-        />
+      {/* Left column: viewer (top), documents list (middle), upload drop zone (bottom) */}
+      <aside className="w-[55vw] min-h-full border-r border-[var(--border-color)] bg-[var(--surface-alt)]/40 backdrop-blur-sm flex flex-col overflow-hidden">
+        {/* Viewer */}
+        <div className="h-[55vh] border-b border-[var(--border-color)] p-3 flex flex-col">
+          {currentDocument ? (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between pb-2">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold truncate" title={currentDocument.file.name}>{currentDocument.file.name}</h2>
+                  <p className="text-[10px] text-[var(--foreground)]/55">{currentDocument.status === 'indexed' ? 'Indexed' : currentDocument.status === 'failed' ? 'Failed' : currentDocument.status === 'processing' ? 'Processing…' : 'Uploading…'} {currentDocument.jobId && '• Job '+currentDocument.jobId}</p>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <PdfViewer file={currentDocument.file} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-xs text-[var(--foreground)]/50">Upload a PDF below to start.</div>
+          )}
+        </div>
+        {/* Documents list */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
+          {documents.length === 0 && (
+            <div className="text-[var(--foreground)]/40 text-[11px]">No documents yet.</div>
+          )}
+          {documents.map(d => (
+            <button
+              key={d.id}
+              onClick={() => setCurrentDocumentId(d.id)}
+              className={`w-full text-left flex items-start gap-3 rounded-md border px-3 py-2 transition-colors ${d.id === currentDocumentId ? 'border-indigo-500/60 bg-indigo-500/5' : 'border-black/10 dark:border-white/10 hover:border-indigo-400/50'}`}
+            >
+              <div className="h-8 w-8 rounded bg-indigo-500/15 flex items-center justify-center shrink-0"><FileIcon className="h-4 w-4 text-indigo-600" /></div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-medium" title={d.file.name}>{d.file.name}</p>
+                <p className={`text-[10px] ${d.status === 'indexed' ? 'text-green-600 dark:text-green-400' : d.status === 'failed' ? 'text-red-600 dark:text-red-400' : d.status === 'processing' ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--foreground)]/55'}`}>{d.status}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+        {/* Upload drop zone */}
+        <div className="p-3 border-t border-[var(--border-color)]">
+          <label
+            onDragEnter={handleDrag}
+            onDragOver={handleDrag}
+            onDragLeave={handleDrag}
+            onDrop={handleDrop}
+            className={`group relative flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed text-center p-4 cursor-pointer transition-colors text-[11px] ${dragActive ? 'border-indigo-500 bg-indigo-500/5' : 'border-black/15 dark:border-white/15 hover:border-indigo-400/60'}`}
+          >
+            <input type="file" multiple accept="application/pdf" className="hidden" onChange={onFileInputChange} />
+            <span className="font-medium">Drop or Browse PDFs</span>
+            <span className="text-[10px] text-[var(--foreground)]/50">Auto uploads • Multiple allowed</span>
+          </label>
+        </div>
       </aside>
-      
-      <main className="w-[70vw] min-h-full flex flex-col">
-        {!uploadedFile && (
-          <div className="p-8 mt-10 text-sm text-[var(--foreground)]/60 max-w-md leading-relaxed">
-            <h1 className="text-xl font-semibold mb-3 tracking-tight">Upload a document to begin</h1>
-            Select or drag in a PDF on the left. After processing you'll be able to ask questions and run RAG queries here.
-          </div>
-        )}
-        {uploadedFile && (
-          <div className="flex flex-col h-full">
-            <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between gap-4 bg-[var(--surface)]/50 backdrop-blur-sm">
-              <div>
-                <h1 className="text-base font-semibold tracking-tight">{uploadedFile.name}</h1>
-                <p className="text-[11px] text-[var(--foreground)]/55">PDF Preview & Highlight Scaffold</p>
-              </div>
-              {/* Placeholder highlight navigation */}
-              <div className="flex items-center gap-2 text-xs">
-                <button className="px-2 py-1 rounded border border-[var(--border-color)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40" disabled>
-                  Prev Ref
-                </button>
-                <button className="px-2 py-1 rounded border border-[var(--border-color)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40" disabled>
-                  Next Ref
-                </button>
-              </div>
+      {/* Right side placeholder for upcoming chat UI */}
+      <main className="flex-1 min-h-full flex flex-col">
+        <div className="p-6">
+          {!currentDocument && (
+            <div className="mt-10 text-sm text-[var(--foreground)]/60 max-w-md leading-relaxed">
+              <h1 className="text-xl font-semibold mb-3 tracking-tight">Ask Questions (Soon)</h1>
+              Upload one or more PDFs on the left. Select a document to preview it. This area will become an AI chat referencing the selected document.
             </div>
-            <div className="flex-1 p-4 overflow-hidden">
-              <PdfViewer file={uploadedFile} />
+          )}
+          {currentDocument && (
+            <div className="text-sm text-[var(--foreground)]/55 space-y-4">
+              <p className="font-medium text-[var(--foreground)]/80">Chat Coming Soon</p>
+              <p>Selected: <span className="font-medium">{currentDocument.file.name}</span>. Status: {currentDocument.status}.</p>
+              <p>When implemented, you will be able to ask contextual questions here and get cited answers.</p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
     </div>
   );

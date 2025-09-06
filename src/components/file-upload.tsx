@@ -8,6 +8,8 @@ type Props = {
     file?: File | null
     onFileChange?: (file: File | null) => void
     multiple?: boolean
+    onUploadStart?: (file: File) => void
+    onUploadComplete?: (file: File, result: any) => void
 }
 
 const bytes = (n: number) => {
@@ -18,7 +20,7 @@ const bytes = (n: number) => {
     return mb.toFixed(2) + ' MB'
 }
 
-export default function FileUpload({ onUpload, file: externalFile, onFileChange, multiple }: Props) {
+export default function FileUpload({ onUpload, file: externalFile, onFileChange, multiple, onUploadStart, onUploadComplete }: Props) {
     const [internalFile, setInternalFile] = React.useState<File | null>(externalFile || null)
     const [dragActive, setDragActive] = React.useState(false)
     const [uploading, setUploading] = React.useState(false)
@@ -59,6 +61,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
 
     const doUpload = async () => {
         if (!file) return
+        try { onUploadStart?.(file) } catch {}
         setUploading(true)
         setJobState('idle')
         try {
@@ -71,6 +74,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
             setJobState('processing')
             // Start polling every 2s for status
             startPoll(json.jobId)
+            try { onUploadComplete?.(file, json) } catch {}
         } catch (e) {
             console.error(e)
             setJobState('failed')
@@ -112,7 +116,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                         onDrop={onDrop}
                         className={`group relative flex flex-col grow items-center justify-center gap-3 rounded-lg border-2 border-dashed transition-colors cursor-pointer select-none px-4 text-center outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/70 ${dragActive ? 'border-indigo-500 bg-indigo-500/5 dark:bg-indigo-400/5' : 'border-black/15 dark:border-white/15 hover:border-indigo-400/60 dark:hover:border-indigo-400/60'}`}
                     >
-                        <input type="file" className="hidden" onChange={onInputChange} accept="application/pdf,.pdf,.txt,.md" />
+                        <input type="file" className="hidden" onChange={onInputChange} accept="application/pdf,.pdf" multiple={false} />
                         <div className="h-14 w-14 rounded-full bg-indigo-500/10 dark:bg-indigo-400/10 flex items-center justify-center text-indigo-600 dark:text-indigo-300 group-hover:bg-indigo-500/15 dark:group-hover:bg-indigo-400/20 transition-colors">
                             <Upload className="h-6 w-6" />
                         </div>
@@ -157,7 +161,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                                 className="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium h-10 px-4 hover:bg-indigo-500 transition-colors"
                             >
                                 {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-                                {uploading ? 'Uploading...' : jobState === 'processing' ? 'Processing...' : 'Upload'}
+                                {uploading ? 'Uploading...' : jobState === 'processing' ? 'Processing...' : 'Upload & View'}
                             </button>
                             <button
                                 type="button"
@@ -168,7 +172,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                     </div>
                 )}
                 <div className="mt-6 text-[10px] tracking-wide text-[var(--foreground)]/40">
-                    Your file stays in-memory only for now (no backend upload yet).
+                    Only one PDF at a time. Upload replaces this panel with a viewer.
                 </div>
             </div>
         </div>
