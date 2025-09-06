@@ -8,14 +8,17 @@ const PdfViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false 
 export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const handleUpload = async (files: File[]) => {
+    const formData = new FormData();
+
     const file = files[0]
     setUploadedFile(file)
+    formData.append('file', file)
     console.log('Uploaded file:', file)
     const res = await fetch('/api/upload', {
       method: 'POST',
-      body: JSON.stringify({ foo: 'bar', ts: Date.now() }),
-      headers: { 'Content-Type': 'application/json' }
+      body: formData
     })
+    console.log('Upload response:', res);
   }
 
   return (

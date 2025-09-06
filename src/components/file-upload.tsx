@@ -22,6 +22,9 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
     const [internalFile, setInternalFile] = React.useState<File | null>(externalFile || null)
     const [dragActive, setDragActive] = React.useState(false)
     const [uploading, setUploading] = React.useState(false)
+    const [jobState, setJobState] = React.useState<'idle' | 'processing' | 'indexed' | 'failed'>('idle')
+    const [jobId, setJobId] = React.useState<string | null>(null)
+    const pollRef = React.useRef<NodeJS.Timeout | null>(null)
     const file = externalFile ?? internalFile
 
     const setFile = (f: File | null) => {
@@ -57,14 +60,43 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
     const doUpload = async () => {
         if (!file) return
         setUploading(true)
-        if (onUpload) {
-            onUpload([file])
-        } else {
-            console.log('onUpload not provided. File:', file)
+        setJobState('idle')
+        try {
+            const form = new FormData()
+            form.append('file', file)
+            const res = await fetch('/api/upload', { method: 'POST', body: form })
+            const json = await res.json()
+            if (!res.ok || !json.jobId) throw new Error(json.error || 'Upload failed')
+            setJobId(json.jobId)
+            setJobState('processing')
+            // Start polling every 2s for status
+            startPoll(json.jobId)
+        } catch (e) {
+            console.error(e)
+            setJobState('failed')
+        } finally {
+            setUploading(false)
         }
-        await new Promise(r => setTimeout(r, 200))
-        setUploading(false)
     }
+
+    const startPoll = (id: string) => {
+        clearPoll();
+        pollRef.current = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/jobs/status?jobId=${id}`)
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.state === 'completed') { setJobState('indexed'); clearPoll(); }
+                else if (data.state === 'failed') { setJobState('failed'); clearPoll(); }
+            } catch {}
+        }, 2000);
+    }
+
+    const clearPoll = () => {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+
+    React.useEffect(() => () => clearPoll(), [])
 
     const reset = () => setFile(null)
 
@@ -101,7 +133,18 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                             </div>
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium truncate" title={file.name}>{file.name}</p>
-                                <p className="text-xs text-[var(--foreground)]/60">{file.type || 'Unknown'} · {bytes(file.size)}</p>
+                                                                <p className="text-xs text-[var(--foreground)]/60 flex items-center gap-1">
+                                                                        {file.type || 'Unknown'} · {bytes(file.size)}
+                                                                        {jobState !== 'idle' && (
+                                                                            <span className={
+                                                                                jobState === 'indexed' ? 'text-green-600 dark:text-green-400' : jobState === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'
+                                                                            }>
+                                                                                {jobState === 'processing' && 'Processing'}
+                                                                                {jobState === 'indexed' && 'Indexed'}
+                                                                                {jobState === 'failed' && 'Failed'}
+                                                                            </span>
+                                                                        )}
+                                                                </p>
                             </div>
                             <button onClick={reset} aria-label="Remove file" className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                                 <X className="h-4 w-4" />
@@ -114,7 +157,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                                 className="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium h-10 px-4 hover:bg-indigo-500 transition-colors"
                             >
                                 {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-                                {uploading ? 'Uploading...' : 'Upload'}
+                                {uploading ? 'Uploading...' : jobState === 'processing' ? 'Processing...' : 'Upload'}
                             </button>
                             <button
                                 type="button"
