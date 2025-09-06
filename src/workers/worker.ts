@@ -1,11 +1,10 @@
 import { Worker } from 'bullmq';
 import { connection } from '@/lib/queue';
-// (Embeddings & vector store imports removed for now)
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { CharacterTextSplitter } from "@langchain/textsplitters";
 import { embeddings, qdrantClient } from "@/lib/vectordb";
-import { OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
+import { vectorStore } from '@/lib/vectorStore';
 
 const worker = new Worker('file-upload-queue', async job => {
     console.log(`Processing job ${job.id} of type ${job.name}`);
@@ -17,15 +16,15 @@ const worker = new Worker('file-upload-queue', async job => {
     const buffer = Buffer.from(b64, 'base64');
     const uint8 = new Uint8Array(buffer);
     const pdfLoader = new PDFLoader(new Blob([uint8]));
-    const documents = await pdfLoader.load();
-    console.log(`Loaded ${documents.length} pages from in-memory PDF '${originalName}'`);
+    const loadedPages = await pdfLoader.load(); // raw page-level documents
+    console.log(`Loaded ${loadedPages.length} pages from in-memory PDF '${originalName}'`);
 
     const textSplitter = new CharacterTextSplitter({
         chunkSize: 100,
         chunkOverlap: 0,
     });
 
-    const texts = await textSplitter.splitDocuments(documents);
+    const chunkedDocs = await textSplitter.splitDocuments(loadedPages);
     // console.log(
     //   'texts:',
     //   JSON.stringify(
@@ -47,12 +46,9 @@ const worker = new Worker('file-upload-queue', async job => {
         console.warn('Qdrant call failed (skipping):', (err as any)?.message);
     }
 
-    const vectorStore = await QdrantVectorStore.fromDocuments(documents, embeddings, {
-        client: qdrantClient ?? undefined,
-        collectionName: "pdf-collection",
-    });
+    vectorStore.addDocuments(chunkedDocs);
 
-    return { pages: documents.length, originalName };
+    return { pages: loadedPages.length, originalName, chunks: chunkedDocs.length };
 }, { connection });
 
 worker.on('completed', job => {

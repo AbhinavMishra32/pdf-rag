@@ -1,13 +1,14 @@
 {
   "name": "pdf-rag",
   "version": "0.1.0",
+  "module": "esnext",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "worker": "tsx src/workers/worker.ts"
+    "worker": "tsx -r ./src/load-env.js src/workers/worker.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.31.9",
