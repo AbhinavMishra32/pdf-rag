@@ -45,13 +45,26 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
     },
     highlightText: async (text: string) => {
       if (!text) return;
-      const cleaned = text.replace(/\s+/g, ' ').trim();
-      setSearchTerm(cleaned.slice(0, 80));
-      setLastSnippet(cleaned);
-      setHighlightWord(cleaned.toLowerCase());
-      requestAnimationFrame(() => highlightVisible());
+      const trimmed = text.length > 600 ? text.slice(0, 600) : text;
+      const cleaned = trimmed.replace(/\s+/g, ' ').trim();
+      const normalized = cleaned.toLowerCase();
+
+      if (normalized === highlightWord) {
+        setHighlightWord('');
+        setTimeout(() => {
+          setSearchTerm(cleaned.slice(0, 120));
+          setLastSnippet(cleaned);
+          setHighlightWord(normalized);
+          scheduleHighlightRetries();
+        }, 0);
+      } else {
+        setSearchTerm(cleaned.slice(0, 120));
+        setLastSnippet(cleaned);
+        setHighlightWord(normalized);
+        scheduleHighlightRetries();
+      }
     }
-  }), []);
+  }), [highlightWord, jumpToPage]);
 
   function highlightVisible() {
     if (!highlightWord) return;
@@ -59,7 +72,7 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
       const container = document.querySelector('.rpv-core__inner-pages');
       if (!container) return;
       const spans = container.querySelectorAll('.rpv-core__text-layer span');
-      
+
       spans.forEach(span => {
         const el = span as HTMLElement;
         if (el.dataset._hl) {
@@ -67,43 +80,70 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
           delete el.dataset._hl;
         }
       });
-      
-      if (highlightWord.length > 10) {
-        const textNodes: { element: HTMLElement; text: string; startIndex: number }[] = [];
-        let fullText = '';
-        
-        spans.forEach(span => {
-          const el = span as HTMLElement;
-          const text = el.textContent || '';
-          if (text.trim()) {
-            textNodes.push({ 
-              element: el, 
-              text: text, 
-              startIndex: fullText.length 
-            });
-            fullText += text + ' ';
-          }
-        });
-        
-        const normalizedSnippet = highlightWord.toLowerCase().replace(/\s+/g, ' ').trim();
-        const normalizedFullText = fullText.toLowerCase();
-        const matchIndex = normalizedFullText.indexOf(normalizedSnippet);
-        
-        if (matchIndex !== -1) {
-          const matchEnd = matchIndex + normalizedSnippet.length;
-          
-          textNodes.forEach(node => {
-            const nodeStart = node.startIndex;
-            const nodeEnd = nodeStart + node.text.length;
-            
+
+      const textNodes: { element: HTMLElement; text: string; startIndex: number }[] = [];
+      let fullText = '';
+      spans.forEach(span => {
+        const el = span as HTMLElement;
+        const text = el.textContent || '';
+        if (text.trim()) {
+          textNodes.push({ element: el, text, startIndex: fullText.length });
+          fullText += text + ' ';
+        }
+      });
+
+      const normalizedSnippet = highlightWord.toLowerCase().replace(/\s+/g, ' ').trim();
+      const normalizedFullText = fullText.toLowerCase();
+      let matchIndex = normalizedFullText.indexOf(normalizedSnippet);
+      let firstEl: HTMLElement | null = null;
+
+      if (matchIndex !== -1) {
+        const matchEnd = matchIndex + normalizedSnippet.length;
+        textNodes.forEach(node => {
+          const nodeStart = node.startIndex;
+          const nodeEnd = nodeStart + node.text.length;
             if (nodeStart < matchEnd && nodeEnd > matchIndex) {
               node.element.dataset._hl = '1';
               node.element.classList.add('pdf-hl');
+              if (!firstEl) firstEl = node.element;
+            }
+        });
+      } else {
+        const tokens = normalizedSnippet.split(' ').filter(t => t.length > 5);
+        const distinct = Array.from(new Set(tokens)).slice(0, 3);
+        if (distinct.length) {
+          textNodes.forEach(node => {
+            const lower = node.text.toLowerCase();
+            if (distinct.some(tok => lower.includes(tok))) {
+              node.element.dataset._hl = '1';
+              node.element.classList.add('pdf-hl');
+              if (!firstEl) firstEl = node.element;
             }
           });
+        } else {
+          scheduleHighlightRetries();
         }
       }
+
+      if (firstEl) {
+        (firstEl as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } else if (matchIndex === -1) {
+        scheduleHighlightRetries();
+      }
     } catch {}
+  }
+
+  function scheduleHighlightRetries() {
+    let attempts = 0;
+    const maxAttempts = 5;
+    const run = () => {
+      attempts++;
+      highlightVisible();
+      if (attempts < maxAttempts) {
+        setTimeout(run, 120 * attempts); 
+      }
+    };
+    requestAnimationFrame(run);
   }
 
   useEffect(() => {
@@ -115,11 +155,11 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
   }, [highlightWord]);
 
   if (!resolved) {
-    return <div className="w-full h-[90vh] flex items-center justify-center text-xs text-[var(--foreground)]/60 border rounded-lg border-[var(--border-color)]">Loading PDF...</div>;
+    return <div className="w-full h-full flex items-center justify-center text-xs text-[var(--foreground)]/60 border rounded-lg border-[var(--border-color)]">Loading PDF...</div>;
   }
 
   return (
-    <div className="w-full h-[90vh] overflow-hidden bg-white dark:bg-neutral-900 rounded-lg border border-[var(--border-color)] relative">
+    <div className="w-full h-full bg-white dark:bg-neutral-900 rounded-lg border border-[var(--border-color)] relative">
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         <Viewer
           ref={viewerRef}

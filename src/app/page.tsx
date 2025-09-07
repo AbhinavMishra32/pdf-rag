@@ -74,63 +74,65 @@ export default function Home() {
   useEffect(() => () => { Object.values(pollIntervals.current).forEach(clearInterval) }, [])
 
   return (
-  <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden">
-      {/* Left column: viewer (top), documents list (middle), upload drop zone (bottom) */}
-  <aside className="w-[55vw] h-full border-r border-[var(--border-color)] bg-[var(--surface-alt)]/40 backdrop-blur-sm flex flex-col overflow-hidden">
-        {/* Viewer */}
-        <div className="h-[55vh] border-b border-[var(--border-color)] p-3 flex flex-col">
-          {currentDocument ? (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between pb-2">
+    <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden bg-white">
+      <aside className="flex flex-col h-full w-[50%] max-w-[760px] border-r border-gray-200 bg-white">
+        <div className="flex-1 flex flex-col p-5 gap-5 overflow-hidden">
+          <div className="flex-1 min-h-0 rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden flex flex-col shadow-sm">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              {currentDocument ? (
                 <div className="min-w-0">
-                  <h2 className="text-sm font-semibold truncate" title={currentDocument.file.name}>{currentDocument.file.name}</h2>
-                  <p className="text-[10px] text-[var(--foreground)]/55">{currentDocument.status === 'indexed' ? 'Indexed' : currentDocument.status === 'failed' ? 'Failed' : currentDocument.status === 'processing' ? 'Processing…' : 'Uploading…'} {currentDocument.jobId && '• Job '+currentDocument.jobId}</p>
+                  <div className="text-sm font-medium truncate" title={currentDocument.file.name}>{currentDocument.file.name}</div>
+                  <div className="text-[11px] text-gray-500">{currentDocument.status === 'indexed' ? 'Ready' : currentDocument.status === 'failed' ? 'Failed' : currentDocument.status === 'processing' ? 'Processing…' : 'Uploading…'} {currentDocument.jobId && '• '+currentDocument.jobId}</div>
                 </div>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <PdfView ref={pdfViewerRef} file={currentDocument.file} />
-              </div>
+              ) : (
+                <div className="text-sm font-medium text-gray-500">No document selected</div>
+              )}
             </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-[var(--foreground)]/50">Upload a PDF below to start.</div>
-          )}
-        </div>
-        {/* Documents list */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
-          {documents.length === 0 && (
-            <div className="text-[var(--foreground)]/40 text-[11px]">No documents yet.</div>
-          )}
-          {documents.map(d => (
-            <button
-              key={d.id}
-              onClick={() => setCurrentDocumentId(d.id)}
-              className={`w-full text-left flex items-start gap-3 rounded-md border px-3 py-2 transition-colors ${d.id === currentDocumentId ? 'border-indigo-500/60 bg-indigo-500/5' : 'border-black/10 dark:border-white/10 hover:border-indigo-400/50'}`}
-            >
-              <div className="h-8 w-8 rounded bg-indigo-500/15 flex items-center justify-center shrink-0"><FileIcon className="h-4 w-4 text-indigo-600" /></div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[11px] font-medium" title={d.file.name}>{d.file.name}</p>
-                <p className={`text-[10px] ${d.status === 'indexed' ? 'text-green-600 dark:text-green-400' : d.status === 'failed' ? 'text-red-600 dark:text-red-400' : d.status === 'processing' ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--foreground)]/55'}`}>{d.status}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-        {/* Upload drop zone */}
-        <div className="p-3 border-t border-[var(--border-color)]">
-          <label
-            onDragEnter={handleDrag}
-            onDragOver={handleDrag}
-            onDragLeave={handleDrag}
-            onDrop={handleDrop}
-            className={`group relative flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed text-center p-4 cursor-pointer transition-colors text-[11px] ${dragActive ? 'border-indigo-500 bg-indigo-500/5' : 'border-black/15 dark:border-white/15 hover:border-indigo-400/60'}`}
-          >
-            <input type="file" multiple accept="application/pdf" className="hidden" onChange={onFileInputChange} />
-            <span className="font-medium">Drop or Browse PDFs</span>
-            <span className="text-[10px] text-[var(--foreground)]/50">Auto uploads • Multiple allowed</span>
-          </label>
+            <div className="flex-1 overflow-hidden bg-white">
+              {currentDocument ? (
+                <PdfView ref={pdfViewerRef} file={currentDocument.file} />
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-gray-400">Upload a PDF below to start</div>
+              )}
+            </div>
+          </div>
+
+          <div className="h-40 rounded-2xl border border-gray-200 bg-gray-50 flex flex-col shadow-sm">
+            <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200">
+              <div className="text-sm font-medium flex-1 truncate">Docs ({documents.length})</div>
+              <label
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                className={`text-[11px] px-2 py-1 rounded-md cursor-pointer transition-colors border leading-none ${dragActive ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-200 hover:border-blue-400 hover:text-blue-600'}`}
+              >
+                <input type="file" multiple accept="application/pdf" className="hidden" onChange={onFileInputChange} />
+                Upload
+              </label>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+              {documents.length === 0 && (
+                <div className="text-[10px] text-gray-400 px-1 pt-1">No docs</div>
+              )}
+              {documents.map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => setCurrentDocumentId(d.id)}
+                  className={`w-full text-left flex items-start gap-2 rounded-lg border px-2 py-1.5 transition-colors bg-white ${d.id === currentDocumentId ? 'border-blue-500/60 ring-1 ring-blue-200' : 'border-gray-200 hover:border-blue-400'}`}
+                >
+                  <div className="h-6 w-6 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0"><FileIcon className="h-3 w-3 text-blue-600" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[10px] font-medium" title={d.file.name}>{d.file.name}</p>
+                    <p className={`text-[9px] ${d.status === 'indexed' ? 'text-green-600' : d.status === 'failed' ? 'text-red-600' : d.status === 'processing' ? 'text-amber-600' : 'text-gray-500'}`}>{d.status}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </aside>
-      {/* Right side chat UI */}
-  <main className="flex-1 flex flex-col p-6 h-full overflow-hidden">
+      <main className="flex-1 flex flex-col h-full overflow-hidden">
         <ChatPanel
           disabled={!currentDocument || currentDocument.status !== 'indexed'}
           currentDocumentName={currentDocument?.file.name || null}
