@@ -28,6 +28,7 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
   const [resolved, setResolved] = useState<string | Uint8Array | null>(
     file instanceof File ? null : file
   );
+  const autoScrollDeadline = useRef<number>(0);
 
   useEffect(() => {
     if (file instanceof File) {
@@ -49,7 +50,8 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
       const cleaned = trimmed.replace(/\s+/g, ' ').trim();
       const normalized = cleaned.toLowerCase();
 
-      if (normalized === highlightWord) {
+  autoScrollDeadline.current = Date.now() + 2000;
+  if (normalized === highlightWord) {
         setHighlightWord('');
         setTimeout(() => {
           setSearchTerm(cleaned.slice(0, 120));
@@ -125,7 +127,7 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
         }
       }
 
-      if (firstEl) {
+      if (firstEl && Date.now() < autoScrollDeadline.current) {
         (firstEl as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
       } else if (matchIndex === -1) {
         scheduleHighlightRetries();
@@ -148,7 +150,14 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
 
   useEffect(() => {
     if (!highlightWord) return;
-    const onScroll = () => requestAnimationFrame(highlightVisible);
+    const onScroll = () => {
+      if (Date.now() > autoScrollDeadline.current) {
+        // After deadline, stop forcing re-highlighting on scroll (normal scroll mode)
+        window.removeEventListener('scroll', onScroll, true);
+        return;
+      }
+      requestAnimationFrame(highlightVisible);
+    };
     window.addEventListener('scroll', onScroll, true);
     highlightVisible();
     return () => window.removeEventListener('scroll', onScroll, true);
@@ -159,7 +168,7 @@ const PdfView = forwardRef<PdfViewerHandle, PdfViewProps>(({ file }, ref) => {
   }
 
   return (
-    <div className="w-full h-full bg-white dark:bg-neutral-900 rounded-lg border border-[var(--border-color)] relative">
+  <div className="w-full h-full bg-[var(--surface)] rounded-lg border border-[var(--border-color)] relative">
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         <Viewer
           ref={viewerRef}

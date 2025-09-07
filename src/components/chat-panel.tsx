@@ -20,10 +20,11 @@ interface ChatMessage {
 interface ChatPanelProps {
   disabled?: boolean; 
   currentDocumentName?: string | null;
+  currentDocumentVectorId?: string | null;
   onSelectSource?: (s: SourceItem) => void;
 }
 
-export default function ChatPanel({ disabled, currentDocumentName, onSelectSource }: ChatPanelProps) {
+export default function ChatPanel({ disabled, currentDocumentName, currentDocumentVectorId, onSelectSource }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [questionInput, setQuestionInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -51,7 +52,7 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
           const res = await fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload })
+              body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload, docId: currentDocumentVectorId })
           });
           if (!res.ok) throw new Error('Request failed');
           
@@ -103,7 +104,7 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
       } finally {
           setIsSending(false);
       }
-  }, [questionInput, isSending, disabled]);
+  }, [questionInput, isSending, disabled, currentDocumentVectorId]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -118,9 +119,24 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
     const parts: React.ReactNode[] = [];
     const regex = /\[(Doc[^\]]+)\]/g; // capture bracket groups containing Doc references
     let lastIndex = 0; let match: RegExpExecArray | null;
+
+    const pushWithBold = (segment: string) => {
+      if (!segment) return;
+      const boldRegex = /\*\*(.+?)\*\*/g;
+      let idx = 0; let bMatch: RegExpExecArray | null; const segNodes: React.ReactNode[] = [];
+      while ((bMatch = boldRegex.exec(segment)) !== null) {
+        const before = segment.slice(idx, bMatch.index);
+        if (before) segNodes.push(<span key={segNodes.length}>{before}</span>);
+        segNodes.push(<strong key={segNodes.length} className="font-semibold">{bMatch[1]}</strong>);
+        idx = boldRegex.lastIndex;
+      }
+      const tail = segment.slice(idx);
+      if (tail) segNodes.push(<span key={segNodes.length}>{tail}</span>);
+      parts.push(<span key={parts.length}>{segNodes}</span>);
+    };
     while ((match = regex.exec(text)) !== null) {
-      const before = text.slice(lastIndex, match.index);
-      if (before) parts.push(<span key={parts.length}>{before}</span>);
+  const before = text.slice(lastIndex, match.index);
+  if (before) pushWithBold(before);
       const inside = match[1];
       const tokens = inside.split(/[;,]/).map(t => t.trim()).filter(Boolean);
       parts.push(
@@ -151,15 +167,15 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
       );
       lastIndex = regex.lastIndex;
     }
-    const tail = text.slice(lastIndex);
-    if (tail) parts.push(<span key={parts.length}>{tail}</span>);
+  const tail = text.slice(lastIndex);
+  if (tail) pushWithBold(tail);
     return parts;
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
+  <div className="flex flex-col h-full bg-[var(--surface)] dark:bg-[var(--surface)]">
       {/* Messages area */}
-      <div ref={listRef} className="flex-1 overflow-y-auto p-6 space-y-6">
+  <div ref={listRef} className="flex-1 overflow-y-auto p-6 space-y-6">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="text-2xl font-medium text-gray-800 mb-2">Hello! How can I assist you today?</div>
@@ -175,7 +191,7 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
                   className={`rounded-2xl px-4 py-3 text-sm ${
                     isUser 
                       ? 'bg-blue-500 text-white ml-auto' 
-                      : 'bg-gray-100 text-gray-800'
+                      : 'bg-[var(--surface-alt)] text-[var(--foreground)] border border-[var(--border-color)]'
                   }`}
                 >
                   <div className={`leading-relaxed ${msg.isError ? 'text-red-500' : ''} ${!isUser ? 'whitespace-pre-wrap' : ''}`}>
@@ -198,9 +214,9 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
       </div>
       
       {/* Input area */}
-      <div className="border-t border-gray-200 p-4">
+  <div className="border-t border-[var(--border-color)] p-4 bg-[var(--surface)]">
         <form onSubmit={(e) => { e.preventDefault(); sendQuestion(); }} className="relative">
-          <div className="flex items-end bg-gray-100 rounded-2xl p-2">
+          <div className="flex items-end bg-[var(--surface-alt)]/70 rounded-2xl p-2 border border-[var(--border-color)]">
             <textarea
               value={questionInput}
               onChange={e => setQuestionInput(e.target.value)}

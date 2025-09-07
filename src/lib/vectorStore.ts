@@ -9,52 +9,73 @@ function normalizeUserId(userId?: string | null) {
     return userId.trim();
 }
 
-export async function vectorStore(userId?: string | null): Promise<QdrantVectorStore | MemoryVectorStore> {
+function sanitizeId(id?: string | null) {
+    if (!id) return 'default';
+    return id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'default';
+}
+
+export async function vectorStore(userId?: string | null, docId?: string | null): Promise<QdrantVectorStore | MemoryVectorStore> {
     const uid = normalizeUserId(userId);
-    if (storeCache.has(uid)) return storeCache.get(uid)!;
+    const did = sanitizeId(docId);
+    const cacheKey = `${uid}::${did}`;
+    if (storeCache.has(cacheKey)) return storeCache.get(cacheKey)!;
 
     if (!qdrantClient) {
-        console.warn(`[vectorStore] No QDRANT_URL provided. Using in-memory vector store for user '${uid}'.`);
+        console.warn(`[vectorStore] No QDRANT_URL provided. Using in-memory vector store for user '${uid}', doc '${did}'.`);
         const mem = await MemoryVectorStore.fromTexts([], [], embeddings);
-        storeCache.set(uid, mem);
+        storeCache.set(cacheKey, mem);
         return mem;
     }
 
-    const collectionName = `pdf_${uid}`; 
+    const collectionName = `pdf_${uid}_${did}`; 
     try {
-        console.log(`[vectorStore] Attempting to open existing collection '${collectionName}' for user '${uid}'.`);
+        console.log(`[vectorStore] Attempting to open existing collection '${collectionName}' (user='${uid}', doc='${did}').`);
         const existing = await QdrantVectorStore.fromExistingCollection(embeddings, {
             client: qdrantClient,
             collectionName,
         });
-        console.log(`[vectorStore] Opened existing collection '${collectionName}' for user '${uid}'.`);
-        storeCache.set(uid, existing);
+        console.log(`[vectorStore] Opened existing collection '${collectionName}'.`);
+        storeCache.set(cacheKey, existing);
         return existing;
     } catch (err: any) {
-        console.info(`[vectorStore] Creating new collection '${collectionName}' for user '${uid}'. Reason: ${err?.message || err}`);
+        if (err?.message?.includes('fetch failed')) {
+            console.warn(`[vectorStore] Qdrant fetch failed for '${collectionName}', using in-memory store fallback.`);
+            const mem = await MemoryVectorStore.fromTexts([], [], embeddings);
+            storeCache.set(cacheKey, mem);
+            return mem;
+        }
+        console.info(`[vectorStore] Creating new collection '${collectionName}' (user='${uid}', doc='${did}'). Reason: ${err?.message || err}`);
         try {
             const created = await QdrantVectorStore.fromDocuments([], embeddings, {
                 client: qdrantClient,
                 collectionName,
             });
-            console.log(`[vectorStore] Created new collection '${collectionName}' for user '${uid}'.`);
-            storeCache.set(uid, created);
+            console.log(`[vectorStore] Created new collection '${collectionName}'.`);
+            storeCache.set(cacheKey, created);
             return created;
         } catch (inner: any) {
-            console.error(`[vectorStore] Failed to create collection '${collectionName}' for user '${uid}'. Falling back to in-memory.`, inner?.message || inner);
+            console.error(`[vectorStore] Failed to create collection '${collectionName}'. Falling back to in-memory.`, inner?.message || inner);
             const mem = await MemoryVectorStore.fromTexts([], [], embeddings);
-            storeCache.set(uid, mem);
+            storeCache.set(cacheKey, mem);
             return mem;
         }
     }
 }
 
-export function clearUserVectorStore(userId?: string | null) {
+export function clearUserVectorStore(userId?: string | null, docId?: string | null) {
     const uid = normalizeUserId(userId);
-    storeCache.delete(uid);
+    if (docId) {
+        storeCache.delete(`${uid}::${sanitizeId(docId)}`);
+    } else {
+        // clear all docs for user
+        for (const key of Array.from(storeCache.keys())) {
+            if (key.startsWith(`${uid}::`)) storeCache.delete(key);
+        }
+    }
 }
 
-export function getUserVectorStore(userId?: string | null) {
+export function getUserVectorStore(userId?: string | null, docId?: string | null) {
     const uid = normalizeUserId(userId);
-    return storeCache.get(uid) || null;
+    if (docId) return storeCache.get(`${uid}::${sanitizeId(docId)}`) || null;
+    return null;
 }

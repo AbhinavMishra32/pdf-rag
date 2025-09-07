@@ -18,14 +18,16 @@ export async function POST(request: Request) {
         const userIdEntry = formData.get('userId');
         const userId = typeof userIdEntry === 'string' ? userIdEntry : 'guest';
 
+        const docId = crypto.randomUUID();
         const job = await myQueue.add('file-upload', {
             b64,
             originalName: file.name,
             size: file.size,
             mime: file.type || 'application/pdf',
             userId,
+            docId,
         });
-        return new Response(JSON.stringify({ ok: true, jobId: job.id }), {
+        return new Response(JSON.stringify({ ok: true, jobId: job.id, docId }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
         });

@@ -8,7 +8,7 @@ import { vectorStore } from '@/lib/vectorStore';
 
 const worker = new Worker('file-upload-queue', async job => {
     console.log(`Processing job ${job.id} of type ${job.name}`);
-    const { b64, originalName, userId } = job.data || {};
+    const { b64, originalName, userId, docId } = job.data || {};
     if (!b64) {
         throw new Error(`No base64 data provided for job ${job.id}`);
     }
@@ -46,9 +46,10 @@ const worker = new Worker('file-upload-queue', async job => {
     }
 
     console.time(`[worker:${job.id}] vector_store_init`);
-    const store = await vectorStore(userId);
+    const effectiveDocId = docId || (originalName || 'untitled').replace(/\.[^.]+$/, '').slice(0,40);
+    const store = await vectorStore(userId, effectiveDocId);
     console.timeEnd(`[worker:${job.id}] vector_store_init`);
-    console.log(`[worker:${job.id}] Using vector store type: ${store.constructor.name} (user: ${userId || 'guest'})`);
+    console.log(`[worker:${job.id}] Using vector store type: ${store.constructor.name} (user: ${userId || 'guest'}, doc: ${effectiveDocId})`);
     try {
         console.time(`[worker:${job.id}] add_documents`);
         await store.addDocuments(chunkedDocs);

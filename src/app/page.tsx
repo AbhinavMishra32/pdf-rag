@@ -10,7 +10,7 @@ const PdfViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false 
 
 export default function Home() {
   type DocumentStatus = 'uploading' | 'processing' | 'indexed' | 'failed'
-  type DocumentEntry = { id: string; file: File; jobId?: string; status: DocumentStatus }
+  type DocumentEntry = { id: string; file: File; jobId?: string; status: DocumentStatus; docVectorId?: string }
   const { user } = useUser();
 
   const [documents, setDocuments] = useState<DocumentEntry[]>([])
@@ -52,8 +52,8 @@ export default function Home() {
       formData.append('userId', user.id)
       const response = await fetch('/api/upload', { method: 'POST', body: formData })
       const json = await response.json()
-      if (!response.ok || !json.jobId) throw new Error(json.error || 'upload failed')
-      setDocuments(list => list.map(doc => doc.id === id ? { ...doc, jobId: json.jobId, status: 'processing' } : doc))
+  if (!response.ok || !json.jobId) throw new Error(json.error || 'upload failed')
+  setDocuments(list => list.map(doc => doc.id === id ? { ...doc, jobId: json.jobId, status: 'processing', docVectorId: json.docId } : doc))
       startStatusPolling(json.jobId, id)
     } catch (err) {
       console.error(err)
@@ -74,11 +74,11 @@ export default function Home() {
   useEffect(() => () => { Object.values(pollIntervals.current).forEach(clearInterval) }, [])
 
   return (
-    <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden bg-white">
-      <aside className="flex flex-col h-full w-[50%] max-w-[760px] border-r border-gray-200 bg-white">
+    <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden bg-[var(--background)]">
+      <aside className="flex flex-col h-full w-[50%] max-w-[760px] border-r border-[var(--border-color)] bg-[var(--surface)]">
         <div className="flex-1 flex flex-col p-5 gap-5 overflow-hidden">
-          <div className="flex-1 min-h-0 rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden flex flex-col shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex-1 min-h-0 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-alt)] overflow-hidden flex flex-col shadow-sm">
+            <div className="px-4 py-3 border-b border-[var(--border-color)] flex items-center justify-between">
               {currentDocument ? (
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate" title={currentDocument.file.name}>{currentDocument.file.name}</div>
@@ -88,7 +88,7 @@ export default function Home() {
                 <div className="text-sm font-medium text-gray-500">No document selected</div>
               )}
             </div>
-            <div className="flex-1 overflow-hidden bg-white">
+            <div className="flex-1 overflow-hidden bg-[var(--surface)]">
               {currentDocument ? (
                 <PdfView ref={pdfViewerRef} file={currentDocument.file} />
               ) : (
@@ -97,15 +97,15 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="h-40 rounded-2xl border border-gray-200 bg-gray-50 flex flex-col shadow-sm">
-            <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200">
+          <div className="h-40 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-alt)] flex flex-col shadow-sm">
+            <div className="px-4 py-2 flex items-center gap-3 border-b border-[var(--border-color)]">
               <div className="text-sm font-medium flex-1 truncate">Docs ({documents.length})</div>
               <label
                 onDragEnter={handleDrag}
                 onDragOver={handleDrag}
                 onDragLeave={handleDrag}
                 onDrop={handleDrop}
-                className={`text-[11px] px-2 py-1 rounded-md cursor-pointer transition-colors border leading-none ${dragActive ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-200 hover:border-blue-400 hover:text-blue-600'}`}
+                className={`text-[11px] px-2 py-1 rounded-md cursor-pointer transition-colors border leading-none ${dragActive ? 'bg-blue-500 text-white border-blue-500' : 'bg-[var(--surface)] border-[var(--border-color)] hover:border-blue-500 hover:text-blue-500'}`}
               >
                 <input type="file" multiple accept="application/pdf" className="hidden" onChange={onFileInputChange} />
                 Upload
@@ -119,9 +119,9 @@ export default function Home() {
                 <button
                   key={d.id}
                   onClick={() => setCurrentDocumentId(d.id)}
-                  className={`w-full text-left flex items-start gap-2 rounded-lg border px-2 py-1.5 transition-colors bg-white ${d.id === currentDocumentId ? 'border-blue-500/60 ring-1 ring-blue-200' : 'border-gray-200 hover:border-blue-400'}`}
+                  className={`w-full text-left flex items-start gap-2 rounded-lg border px-2 py-1.5 transition-colors bg-[var(--surface)] ${d.id === currentDocumentId ? 'border-blue-500/60 ring-1 ring-blue-500/30' : 'border-[var(--border-color)] hover:border-blue-500'}`}
                 >
-                  <div className="h-6 w-6 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0"><FileIcon className="h-3 w-3 text-blue-600" /></div>
+                  <div className="h-6 w-6 rounded-md bg-blue-500/15 flex items-center justify-center shrink-0"><FileIcon className="h-3 w-3 text-blue-500" /></div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[10px] font-medium" title={d.file.name}>{d.file.name}</p>
                     <p className={`text-[9px] ${d.status === 'indexed' ? 'text-green-600' : d.status === 'failed' ? 'text-red-600' : d.status === 'processing' ? 'text-amber-600' : 'text-gray-500'}`}>{d.status}</p>
@@ -132,10 +132,11 @@ export default function Home() {
           </div>
         </div>
       </aside>
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
+  <main className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--background)]">
         <ChatPanel
           disabled={!currentDocument || currentDocument.status !== 'indexed'}
           currentDocumentName={currentDocument?.file.name || null}
+          currentDocumentVectorId={currentDocument?.docVectorId || null}
           onSelectSource={(s) => {
             if (s.page != null) {
               const pageIndex = Math.max(0, (s.page as number) - 1)
