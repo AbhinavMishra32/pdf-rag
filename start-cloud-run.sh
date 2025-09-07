@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-echo "[entrypoint] starting web + worker"
+echo "[entrypoint] starting web (in-memory worker embedded)"
 
 # Cleanup on exit
 cleanup() {
@@ -14,17 +14,8 @@ cleanup() {
 }
 trap cleanup TERM INT EXIT
 
-# If we launch a dedicated worker process here, disable embedded autostart
-export ENABLE_EMBEDDED_WORKER=0
-
-# Start worker (background)
-npm run worker &
-WORKER_PID=$!
-echo "[entrypoint] Worker started with PID ${WORKER_PID}"
-
-# Web (foreground)
 echo "[entrypoint] Launching Next.js on port ${PORT:-8080}"
-npm run start
+NODE_ENV=production npm run start
 
 # Exited
 echo "[entrypoint] Web process exited"

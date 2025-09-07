@@ -27,8 +27,6 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
     const [dragActive, setDragActive] = React.useState(false)
     const [uploading, setUploading] = React.useState(false)
     const [jobState, setJobState] = React.useState<'idle' | 'processing' | 'indexed' | 'failed'>('idle')
-    const [jobId, setJobId] = React.useState<string | null>(null)
-    const pollRef = React.useRef<NodeJS.Timeout | null>(null)
     const file = externalFile ?? internalFile
 
     const setFile = (f: File | null) => {
@@ -68,20 +66,18 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
         setErrorMsg(null)
         try { onUploadStart?.(file) } catch {}
         setUploading(true)
-        setJobState('idle')
+    setJobState('idle')
         try {
             const form = new FormData()
             form.append('file', file)
             const res = await fetch('/api/upload', { method: 'POST', body: form })
             const json = await res.json()
-            if (!res.ok || !json.jobId) {
+            if (!res.ok || !json.docId) {
                 setErrorMsg(json.error || 'Upload failed')
                 throw new Error(json.error || 'Upload failed')
             }
-            setJobId(json.jobId)
-            setJobState('processing')
-            // Start polling every 2s for status
-            startPoll(json.jobId)
+            // Inline processing already completed server-side
+            setJobState('indexed')
             try { onUploadComplete?.(file, json) } catch {}
         } catch (e) {
             console.error(e)
@@ -91,24 +87,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
         }
     }
 
-    const startPoll = (id: string) => {
-        clearPoll();
-        pollRef.current = setInterval(async () => {
-            try {
-                const res = await fetch(`/api/jobs/status?jobId=${id}`)
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data.state === 'completed') { setJobState('indexed'); clearPoll(); }
-                else if (data.state === 'failed') { setJobState('failed'); clearPoll(); }
-            } catch {}
-        }, 2000);
-    }
-
-    const clearPoll = () => {
-        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    }
-
-    React.useEffect(() => () => clearPoll(), [])
+    // Polling logic removed (processing inline now)
 
     const reset = () => setFile(null)
 

@@ -1,48 +1,15 @@
-import { Queue } from 'bullmq';
-import Redis from 'ioredis';
+// In-memory queue replacement (no Redis dependency)
+// Provides minimal subset of BullMQ API used by the app: add(), getJob(id)
+// and events: 'active','completed','failed'.
+import { inMemoryQueue } from './inmemory-queue';
 
-let _connection: Redis | undefined;
-let _queue: Queue | undefined;
+export const myQueue = {
+  add: (name: string, data: any) => inMemoryQueue.add(name, data),
+  getJob: async (id: string) => inMemoryQueue.getJob(id),
+  // compatibility shim: event subscription for SSE/status polling
+  on: (evt: string, handler: any) => { inMemoryQueue.on(evt, handler); return myQueue; },
+  off: (evt: string, handler: any) => { inMemoryQueue.off(evt, handler); return myQueue; }
+} as any;
 
-function createConnection(): Redis | undefined {
-  const redisUrl = process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL;
-  if (!redisUrl) return undefined;
-  return new Redis(redisUrl, { maxRetriesPerRequest: null });
-}
-
-export function getRedisConnection(): Redis | undefined {
-  if (_connection) return _connection;
-  _connection = createConnection();
-  if (!_connection) console.warn('[queue] Redis URL not configured');
-  return _connection;
-}
-
-export function getQueue(): Queue | undefined {
-  if (_queue) return _queue;
-  const conn = getRedisConnection();
-  if (!conn) return undefined;
-  _queue = new Queue('file-upload-queue', { connection: conn });
-  return _queue;
-}
-
-export const myQueue = new Proxy({}, {
-  get(_t, prop: string) {
-    const q = getQueue();
-    if (!q) {
-      throw new Error(`[queue] Cannot use queue method '${prop}' – Redis not configured.`);
-    }
-    // @ts-ignore dynamic access
-    return q[prop].bind(q);
-  }
-}) as unknown as Queue;
-
-export const connection = new Proxy({}, {
-  get(_t, prop: string) {
-    const c = getRedisConnection();
-    if (!c) {
-      throw new Error(`[queue] Cannot access Redis connection property '${prop}' – Redis not configured.`);
-    }
-    // @ts-ignore
-    return c[prop];
-  }
-}) as unknown as Redis;
+// For code that imported 'connection' just provide undefined; SSE route will be adapted.
+export const connection: any = undefined;

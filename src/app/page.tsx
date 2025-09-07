@@ -10,34 +10,18 @@ const PdfViewer = dynamic(() => import('@/components/pdf-viewer').then(m => m.de
 interface PdfViewerHandle { goToPage: (pageIndex: number) => void; highlightText: (text: string) => void }
 
 export default function Home() {
-  type DocumentStatus = 'uploading' | 'processing' | 'indexed' | 'failed'
-  type DocumentEntry = { id: string; file: File; jobId?: string; status: DocumentStatus; docVectorId?: string }
+  type DocumentStatus = 'uploading' | 'indexed' | 'failed'
+  type DocumentEntry = { id: string; file: File; status: DocumentStatus; docVectorId?: string }
   const { user } = useUser();
 
   const [documents, setDocuments] = useState<DocumentEntry[]>([])
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
-  const pollIntervals = useRef<Record<string, any>>({})
+  // No polling needed; processing is synchronous server-side.
 
   const currentDocument = documents.find(d => d.id === currentDocumentId) || null
   const pdfViewerRef = useRef<PdfViewerHandle | null>(null)
 
-  function startStatusPolling(jobId: string, documentId: string) {
-    if (pollIntervals.current[documentId]) clearInterval(pollIntervals.current[documentId])
-    pollIntervals.current[documentId] = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/jobs/status?jobId=${jobId}`)
-        if (!response.ok) return
-        const json = await response.json()
-        if (json.state === 'completed') {
-          setDocuments(list => list.map(doc => doc.id === documentId ? { ...doc, status: 'indexed' } : doc))
-          clearInterval(pollIntervals.current[documentId]); delete pollIntervals.current[documentId]
-        } else if (json.state === 'failed') {
-          setDocuments(list => list.map(doc => doc.id === documentId ? { ...doc, status: 'failed' } : doc))
-          clearInterval(pollIntervals.current[documentId]); delete pollIntervals.current[documentId]
-        }
-      } catch {}
-    }, 2000)
-  }
+  function startStatusPolling() { /* noop */ }
 
   async function uploadDocument(file: File) {
     if (!user) {
@@ -53,9 +37,8 @@ export default function Home() {
       formData.append('userId', user.id)
       const response = await fetch('/api/upload', { method: 'POST', body: formData })
       const json = await response.json()
-  if (!response.ok || !json.jobId) throw new Error(json.error || 'upload failed')
-  setDocuments(list => list.map(doc => doc.id === id ? { ...doc, jobId: json.jobId, status: 'processing', docVectorId: json.docId } : doc))
-      startStatusPolling(json.jobId, id)
+  if (!response.ok || !json.docId) throw new Error(json.error || 'upload failed')
+  setDocuments(list => list.map(doc => doc.id === id ? { ...doc, status: 'indexed', docVectorId: json.docId } : doc))
     } catch (err) {
       console.error(err)
       setDocuments(list => list.map(doc => doc.id === id ? { ...doc, status: 'failed' } : doc))
@@ -72,7 +55,7 @@ export default function Home() {
   function handleDrop(e: React.DragEvent) { e.preventDefault(); setDragActive(false); handleFileList(e.dataTransfer.files) }
   function handleDrag(e: React.DragEvent) { e.preventDefault(); if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true); else if (e.type === 'dragleave') setDragActive(false) }
 
-  useEffect(() => () => { Object.values(pollIntervals.current).forEach(clearInterval) }, [])
+  // No polling cleanup required
 
   const appUi = (
     <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden bg-[var(--background)]">
@@ -83,7 +66,7 @@ export default function Home() {
               {currentDocument ? (
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate" title={currentDocument.file.name}>{currentDocument.file.name}</div>
-                  <div className="text-[11px] text-gray-500">{currentDocument.status === 'indexed' ? 'Ready' : currentDocument.status === 'failed' ? 'Failed' : currentDocument.status === 'processing' ? 'Processing…' : 'Uploading…'} {currentDocument.jobId && '• '+currentDocument.jobId}</div>
+                  <div className="text-[11px] text-gray-500">{currentDocument.status === 'indexed' ? 'Ready' : currentDocument.status === 'failed' ? 'Failed' : 'Uploading…'}</div>
                 </div>
               ) : (
                 <div className="text-sm font-medium text-gray-500">No document selected</div>
@@ -125,7 +108,7 @@ export default function Home() {
                   <div className="h-6 w-6 rounded-md bg-blue-500/15 flex items-center justify-center shrink-0"><FileIcon className="h-3 w-3 text-blue-500" /></div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[10px] font-medium" title={d.file.name}>{d.file.name}</p>
-                    <p className={`text-[9px] ${d.status === 'indexed' ? 'text-green-600' : d.status === 'failed' ? 'text-red-600' : d.status === 'processing' ? 'text-amber-600' : 'text-gray-500'}`}>{d.status}</p>
+                    <p className={`text-[9px] ${d.status === 'indexed' ? 'text-green-600' : d.status === 'failed' ? 'text-red-600' : d.status === 'uploading' ? 'text-amber-600' : 'text-gray-500'}`}>{d.status}</p>
                   </div>
                 </button>
               ))}

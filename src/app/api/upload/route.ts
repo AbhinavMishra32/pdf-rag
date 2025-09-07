@@ -1,5 +1,7 @@
-import { myQueue } from '@/lib/queue';
 import { auth } from '@clerk/nextjs/server';
+import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+import { vectorStore } from '@/lib/vectorStore';
 
 const PAGE_LIMIT = 20;
 
@@ -37,18 +39,19 @@ export async function POST(request: Request) {
             console.warn('[upload] pdf page count parse failed', e?.message || e);
         }
 
-        const b64 = buffer.toString('base64');
-
-    const docId = crypto.randomUUID();
-        const job = await myQueue.add('file-upload', {
-            b64,
-            originalName: file.name,
-            size: file.size,
-            mime: file.type || 'application/pdf',
-            userId,
-            docId,
+        // Inline processing (was previously queued)
+        const uint8 = new Uint8Array(buffer);
+        const loader = new PDFLoader(new Blob([uint8]));
+        const pages = await loader.load();
+        const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 100 });
+        const chunks = (await splitter.splitDocuments(pages)).map(d => {
+            const page = (d as any).metadata?.loc?.pageNumber ?? (d as any).metadata?.page ?? null;
+            return { ...d, metadata: { ...d.metadata, page } } as any;
         });
-        return new Response(JSON.stringify({ ok: true, jobId: job.id, docId }), {
+        const docId = crypto.randomUUID();
+        const store = await vectorStore(userId, docId);
+        await store.addDocuments(chunks);
+        return new Response(JSON.stringify({ ok: true, docId, pages: pages.length, chunks: chunks.length }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
         });

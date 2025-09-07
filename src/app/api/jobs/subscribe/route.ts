@@ -1,5 +1,4 @@
-import { QueueEvents } from 'bullmq';
-import { connection } from '@/lib/queue';
+import { inMemoryQueue } from '@/lib/inmemory-queue';
 
 // Simple SSE endpoint: /api/jobs/subscribe?jobId=123
 export async function GET(request: Request) {
@@ -9,8 +8,7 @@ export async function GET(request: Request) {
     return new Response('Missing jobId', { status: 400 });
   }
 
-  const queueEvents = new QueueEvents('file-upload-queue', { connection });
-  await queueEvents.waitUntilReady();
+  // Directly tap into in-memory queue events
 
   const stream = new ReadableStream({
     start(controller) {
@@ -21,16 +19,16 @@ export async function GET(request: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       }
 
-      const onActive = ({ jobId: id }: any) => {
+  const onActive = ({ jobId: id }: any) => {
         if (id === jobId) send('active', { jobId });
       };
-      const onCompleted = ({ jobId: id, returnvalue }: any) => {
+  const onCompleted = ({ jobId: id, returnvalue }: any) => {
         if (id === jobId) {
           send('completed', { jobId, returnvalue });
           cleanup();
         }
       };
-      const onFailed = ({ jobId: id, failedReason }: any) => {
+  const onFailed = ({ jobId: id, failedReason }: any) => {
         if (id === jobId) {
           send('failed', { jobId, failedReason });
             cleanup();
@@ -38,16 +36,15 @@ export async function GET(request: Request) {
       };
 
       function cleanup() {
-        queueEvents.removeListener('active', onActive);
-        queueEvents.removeListener('completed', onCompleted);
-        queueEvents.removeListener('failed', onFailed);
-        queueEvents.close().catch(() => {});
+        inMemoryQueue.removeListener('active', onActive);
+        inMemoryQueue.removeListener('completed', onCompleted);
+        inMemoryQueue.removeListener('failed', onFailed);
         controller.close();
       }
 
-      queueEvents.on('active', onActive);
-      queueEvents.on('completed', onCompleted);
-      queueEvents.on('failed', onFailed);
+      inMemoryQueue.on('active', onActive);
+      inMemoryQueue.on('completed', onCompleted);
+      inMemoryQueue.on('failed', onFailed);
 
       // Optional timeout (60s) to avoid dangling connections
       const timeout = setTimeout(() => {

@@ -46,8 +46,6 @@ COPY --from=builder /app/start-cloud-run.sh ./start-cloud-run.sh
 RUN chmod +x /app/start-cloud-run.sh
 
 # Cloud Run expects the listening process to stay in foreground.
-# We'll start both the web server and the worker in one container for simplicity.
-# NOTE: For higher scale you would normally split worker into its own service.
 EXPOSE 8080
 
 # Use dumb-init to handle PID 1 signals properly, ensuring worker/web shutdown gracefully

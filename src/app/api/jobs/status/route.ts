@@ -9,15 +9,13 @@ export async function GET(request: Request) {
     const job = await myQueue.getJob(jobId);
     if (!job) return new Response(JSON.stringify({ ok: false, error: 'Not found'}), { status: 404 });
 
-    const isCompleted = await job.isCompleted();
-    const isFailed = await job.isFailed();
-
+    const state = job.state;
     return new Response(JSON.stringify({
       ok: true,
       jobId,
-      state: isCompleted ? 'completed' : isFailed ? 'failed' : 'active',
-      returnvalue: isCompleted ? job.returnvalue : undefined,
-      failedReason: isFailed ? job.failedReason : undefined,
+      state,
+      returnvalue: state === 'completed' ? job.returnvalue : undefined,
+      failedReason: state === 'failed' ? job.failedReason : undefined,
     }), { status: 200, headers: { 'Content-Type': 'application/json' }});
   } catch (e: any) {
     return new Response(JSON.stringify({ ok: false, error: e?.message || 'Error'}), { status: 500 });

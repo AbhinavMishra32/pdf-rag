@@ -1,14 +1,13 @@
-import { Worker } from 'bullmq';
-import { connection } from '@/lib/queue';
+import { registerProcessor } from '@/lib/inmemory-queue';
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { CharacterTextSplitter, RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { embeddings, qdrantClient } from "@/lib/vectordb";
 import { QdrantVectorStore } from '@langchain/qdrant';
 import { vectorStore } from '@/lib/vectorStore';
 
-const worker = new Worker('file-upload-queue', async job => {
+registerProcessor(async job => {
     console.log(`Processing job ${job.id} of type ${job.name}`);
-    const { b64, originalName, userId, docId } = job.data || {};
+    const { b64, originalName, userId, docId } = (job as any).data || {};
     if (!b64) {
         throw new Error(`No base64 data provided for job ${job.id}`);
     }
@@ -60,19 +59,8 @@ const worker = new Worker('file-upload-queue', async job => {
     }
 
     return { pages: loadedPages.length, originalName, chunks: chunkedDocs.length };
-}, { connection });
-
-worker.on('completed', job => {
-    console.log(`Job ${job.id} has completed!`);
 });
 
-worker.on('failed', (job, err) => {
-    console.error(`Job ${job?.id} has failed with error ${err.message}`);
-});
+console.log('In-memory worker registered');
 
-console.log('Worker is running and waiting for jobs...');
-
-// Keep the worker running
-process.stdin.resume();
-
-export default worker;
+export {}; // no default export needed
