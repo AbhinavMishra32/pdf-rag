@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { File as FileIcon } from 'lucide-react'
 import ChatPanel from '@/components/chat-panel'
 import PdfView, { PdfViewerHandle } from '@/components/pdf-viewer'
-import { useUser } from '@clerk/nextjs'
+import { useUser, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/nextjs'
 const PdfViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
 
 export default function Home() {
@@ -73,7 +73,7 @@ export default function Home() {
 
   useEffect(() => () => { Object.values(pollIntervals.current).forEach(clearInterval) }, [])
 
-  return (
+  const appUi = (
     <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden bg-[var(--background)]">
       <aside className="flex flex-col h-full w-[50%] max-w-[760px] border-r border-[var(--border-color)] bg-[var(--surface)]">
         <div className="flex-1 flex flex-col p-5 gap-5 overflow-hidden">
@@ -149,5 +149,16 @@ export default function Home() {
         />
       </main>
     </div>
+  );
+
+  return (
+    <>
+      <SignedOut>
+        <RedirectToSignIn redirectUrl="/" signInFallbackRedirectUrl="/" />
+      </SignedOut>
+      <SignedIn>
+        {appUi}
+      </SignedIn>
+    </>
   );
 }

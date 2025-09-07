@@ -1,9 +1,14 @@
 import { myQueue } from '@/lib/queue';
+import { auth } from '@clerk/nextjs/server';
 
 export async function POST(request: Request) {
     try {
+        const { userId } = await auth();
+        if (!userId) {
+            return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        }
         const formData = await request.formData();
-    const file = formData.get('file') as File;
+        const file = formData.get('file') as File;
         
         if (!file) {
             return new Response(JSON.stringify({ ok: false, error: 'No file provided' }), {
@@ -14,9 +19,6 @@ export async function POST(request: Request) {
 
         const arrayBuffer = await file.arrayBuffer();
         const b64 = Buffer.from(arrayBuffer).toString('base64');
-
-        const userIdEntry = formData.get('userId');
-        const userId = typeof userIdEntry === 'string' ? userIdEntry : 'guest';
 
         const docId = crypto.randomUUID();
         const job = await myQueue.add('file-upload', {

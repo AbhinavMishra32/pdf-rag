@@ -1,10 +1,15 @@
 import { vectorStore } from "@/lib/vectorStore";
 import OpenAI from "openai";
+import { auth } from '@clerk/nextjs/server';
 
 type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
 export async function POST(request: Request) {
-    const { question, userId, history, docId } = await request.json().catch(() => ({}));
+    const { userId } = await auth();
+    if (!userId) {
+        return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    const { question, history, docId } = await request.json().catch(() => ({}));
     const q = typeof question === 'string' ? question.trim() : '';
     const historyItems: HistoryItem[] = Array.isArray(history)
         ? history.filter((h: any) => (h?.role === 'user' || h?.role === 'assistant') && typeof h?.text === 'string').slice(-12)
