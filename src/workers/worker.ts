@@ -26,8 +26,8 @@ const worker = new Worker('file-upload-queue', async job => {
     //     chunkOverlap: 50,
     // });
     const textSplitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 500,
-        chunkOverlap: 50,
+        chunkSize: 1000,
+        chunkOverlap: 100,
     });
 
     console.time(`[worker:${job.id}] split_docs`);

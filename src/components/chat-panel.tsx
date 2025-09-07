@@ -48,48 +48,51 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
       setQuestionInput('');
 
       try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload })
-        });
-        if (!res.ok || !res.body) {
-          let errJson: any = {}; try { errJson = await res.json(); } catch {}
-          throw new Error(errJson?.message || 'Request failed');
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let accText = '';
-        let currentSources: SourceItem[] = [];
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const evt = JSON.parse(line);
-              if (evt.type === 'meta') {
-                if (Array.isArray(evt.sources)) currentSources = evt.sources;
-                setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, sources: currentSources } : m));
-              } else if (evt.type === 'chunk') {
-                accText += evt.delta;
-                setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, text: accText, sources: currentSources } : m));
-              } else if (evt.type === 'done') {
-                setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, isLoading: false } : m));
-              } else if (evt.type === 'error') {
-                throw new Error(evt.error || 'Stream error');
+          const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload })
+          });
+          if (!res.ok) throw new Error('Request failed');
+          
+          const reader = res.body?.getReader();
+          if (!reader) throw new Error('No response stream');
+          
+          let assistantText = '';
+          let sources: SourceItem[] = [];
+          
+          while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = new TextDecoder().decode(value);
+              const lines = chunk.split('\n').filter(line => line.trim());
+              
+              for (const line of lines) {
+                  try {
+                      const parsed = JSON.parse(line);
+                      if (parsed.type === 'meta') {
+                          sources = Array.isArray(parsed.sources) ? parsed.sources : [];
+                      } else if (parsed.type === 'chunk' && parsed.delta) {
+                          assistantText += parsed.delta;
+                          setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
+                              ...m, text: assistantText, sources, isLoading: true
+                          } : m));
+                      } else if (parsed.type === 'done') {
+                          if (!assistantText.trim()) {
+                              console.warn('[chat-panel] empty response from model');
+                          }
+                          setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
+                              ...m, text: assistantText, sources, isLoading: false
+                          } : m));
+                      } else if (parsed.type === 'error') {
+                          throw new Error(parsed.error || 'Stream error');
+                      }
+                  } catch (parseErr) {
+                      console.warn('[chat-panel] failed to parse stream line:', line);
+                  }
               }
-            } catch (e) {
-              // ignore malformed line
-            }
           }
-        }
-        // finalize if still loading
-        setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, isLoading: false } : m));
       } catch (err: any) {
           setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
               ...m,
@@ -140,7 +143,7 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
                 key={tok+parts.length}
                 type="button"
                 onClick={() => onSelectSource?.(source!)}
-                className="text-[10px] px-2 py-0.5 rounded border bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                className="text-[10px] px-2 py-0.5 rounded border bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer"
               >{label}</button>
             );
           })}
@@ -154,14 +157,14 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
   }
 
   return (
-    <div className="flex flex-col h-full max-h-screen">
+    <div className="flex flex-col h-full">
       <div className="flex items-center justify-between pb-3 border-b border-[var(--border-color)]">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Ask Questions</h2>
           <p className="text-[11px] text-[var(--foreground)]/55">{currentDocumentName ? `Selected: ${currentDocumentName}` : 'No document selected'}</p>
         </div>
       </div>
-  <div ref={listRef} className="flex-1 overflow-y-auto space-y-4 py-4 pr-2">
+      <div ref={listRef} className="flex-1 overflow-y-auto space-y-4 py-4 pr-2">
         {messages.length === 0 && (
           <div className="text-[12px] text-[var(--foreground)]/50 leading-relaxed max-w-md">
             Ask about the content of your uploaded documents. If the answer is not in them the model will say it does not know.
