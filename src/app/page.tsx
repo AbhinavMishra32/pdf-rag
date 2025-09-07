@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { File as FileIcon } from 'lucide-react'
 import ChatPanel from '@/components/chat-panel'
-import PdfView, { PdfViewerHandle } from '@/components/pdf-viewer'
 import { useUser, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/nextjs'
-const PdfViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
+const PdfViewer = dynamic(() => import('@/components/pdf-viewer').then(m => m.default), { ssr: false })
+
+interface PdfViewerHandle { goToPage: (pageIndex: number) => void; highlightText: (text: string) => void }
 
 export default function Home() {
   type DocumentStatus = 'uploading' | 'processing' | 'indexed' | 'failed'
@@ -90,7 +91,7 @@ export default function Home() {
             </div>
             <div className="flex-1 overflow-hidden bg-[var(--surface)]">
               {currentDocument ? (
-                <PdfView ref={pdfViewerRef} file={currentDocument.file} />
+                <PdfViewer ref={pdfViewerRef as any} file={currentDocument.file} />
               ) : (
                 <div className="h-full flex items-center justify-center text-xs text-gray-400">Upload a PDF below to start</div>
               )}

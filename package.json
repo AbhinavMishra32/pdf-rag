@@ -7,7 +7,6 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint",
     "worker": "tsx -r ./src/load-env.js src/workers/worker.ts"
   },
   "dependencies": {
