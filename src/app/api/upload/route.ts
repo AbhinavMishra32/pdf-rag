@@ -1,5 +1,8 @@
 import { myQueue } from '@/lib/queue';
 import { auth } from '@clerk/nextjs/server';
+import pdfParse from 'pdf-parse';
+
+const PAGE_LIMIT = 20;
 
 export async function POST(request: Request) {
     try {
@@ -18,9 +21,24 @@ export async function POST(request: Request) {
         }
 
         const arrayBuffer = await file.arrayBuffer();
-        const b64 = Buffer.from(arrayBuffer).toString('base64');
+        const buffer = Buffer.from(arrayBuffer);
 
-        const docId = crypto.randomUUID();
+        try {
+            const meta = await pdfParse(buffer).catch(() => null);
+            const numPages = (meta as any)?.numpages || (meta as any)?.numPages || null;
+            if (numPages && numPages > PAGE_LIMIT) {
+                return new Response(JSON.stringify({ ok: false, error: `PDF has ${numPages} pages (limit ${PAGE_LIMIT}).` }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+        } catch (e:any) {
+            console.warn('[upload] pdf page count parse failed', e?.message || e);
+        }
+
+        const b64 = buffer.toString('base64');
+
+    const docId = crypto.randomUUID();
         const job = await myQueue.add('file-upload', {
             b64,
             originalName: file.name,

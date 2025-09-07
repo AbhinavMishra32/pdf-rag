@@ -20,6 +20,8 @@ const bytes = (n: number) => {
     return mb.toFixed(2) + ' MB'
 }
 
+const PAGE_LIMIT = 20;
+
 export default function FileUpload({ onUpload, file: externalFile, onFileChange, multiple, onUploadStart, onUploadComplete }: Props) {
     const [internalFile, setInternalFile] = React.useState<File | null>(externalFile || null)
     const [dragActive, setDragActive] = React.useState(false)
@@ -59,8 +61,11 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
         else if (e.type === 'dragleave') setDragActive(false)
     }
 
+    const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
     const doUpload = async () => {
         if (!file) return
+        setErrorMsg(null)
         try { onUploadStart?.(file) } catch {}
         setUploading(true)
         setJobState('idle')
@@ -69,7 +74,10 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
             form.append('file', file)
             const res = await fetch('/api/upload', { method: 'POST', body: form })
             const json = await res.json()
-            if (!res.ok || !json.jobId) throw new Error(json.error || 'Upload failed')
+            if (!res.ok || !json.jobId) {
+                setErrorMsg(json.error || 'Upload failed')
+                throw new Error(json.error || 'Upload failed')
+            }
             setJobId(json.jobId)
             setJobState('processing')
             // Start polling every 2s for status
@@ -107,7 +115,8 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 rounded-xl border border-black/10 dark:border-white/10 bg-[var(--surface)]/70 dark:bg-[var(--surface)]/60 backdrop-blur-sm p-5 flex flex-col">
-                <h2 className="text-sm font-semibold tracking-wide text-[var(--foreground)]/80 mb-4">Document Upload</h2>
+                <h2 className="text-sm font-semibold tracking-wide text-[var(--foreground)]/80 mb-2">Document Upload</h2>
+                <p className="text-[10px] mb-4 text-[var(--foreground)]/55">Limit: {PAGE_LIMIT} pages per PDF.</p>
                 {!file && (
                     <label
                         onDragEnter={onDrag}
@@ -163,6 +172,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                                 {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
                                 {uploading ? 'Uploading...' : jobState === 'processing' ? 'Processing...' : 'Upload & View'}
                             </button>
+                            {errorMsg && <div className="text-xs text-red-600 dark:text-red-400">{errorMsg}</div>}
                             <button
                                 type="button"
                                 onClick={() => setFile(null)}
@@ -172,7 +182,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                     </div>
                 )}
                 <div className="mt-6 text-[10px] tracking-wide text-[var(--foreground)]/40">
-                    Only one PDF at a time. Upload replaces this panel with a viewer.
+                    Only one PDF at a time. Files over {PAGE_LIMIT} pages are rejected.
                 </div>
             </div>
         </div>
