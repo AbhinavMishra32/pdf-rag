@@ -1,6 +1,5 @@
 import { myQueue } from '@/lib/queue';
 import { auth } from '@clerk/nextjs/server';
-import pdfParse from 'pdf-parse';
 
 const PAGE_LIMIT = 20;
 
@@ -24,6 +23,8 @@ export async function POST(request: Request) {
         const buffer = Buffer.from(arrayBuffer);
 
         try {
+            // Dynamic import to avoid build-time side effects from pdf-parse
+            const { default: pdfParse } = await import('pdf-parse');
             const meta = await pdfParse(buffer).catch(() => null);
             const numPages = (meta as any)?.numpages || (meta as any)?.numPages || null;
             if (numPages && numPages > PAGE_LIMIT) {
