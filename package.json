@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "next build",
+    "build:turbopack": "next build --turbopack",
     "start": "next start",
     "worker": "tsx -r ./src/load-env.js src/workers/worker.ts"
   },
@@ -31,18 +32,18 @@
     "pdfjs-dist": "^3.11.174",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-pdf": "^10.1.0"
+  "react-pdf": "^10.1.0",
+  "tsx": "^4.19.1",
+  "@tailwindcss/postcss": "^4",
+  "tailwindcss": "^4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
-    "tailwindcss": "^4",
-    "tsx": "^4.19.1",
     "typescript": "^5"
   }
 }

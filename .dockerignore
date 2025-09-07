@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+.pnpm-store
+
+# Build output
+.next
+out
+
+# Local env
+.env.local
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# Misc
+.DS_Store
+.vercel
