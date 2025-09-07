@@ -22,10 +22,12 @@ export async function vectorStore(userId?: string | null): Promise<QdrantVectorS
 
     const collectionName = `pdf_${uid}`; 
     try {
+        console.log(`[vectorStore] Attempting to open existing collection '${collectionName}' for user '${uid}'.`);
         const existing = await QdrantVectorStore.fromExistingCollection(embeddings, {
             client: qdrantClient,
             collectionName,
         });
+        console.log(`[vectorStore] Opened existing collection '${collectionName}' for user '${uid}'.`);
         storeCache.set(uid, existing);
         return existing;
     } catch (err: any) {
@@ -35,6 +37,7 @@ export async function vectorStore(userId?: string | null): Promise<QdrantVectorS
                 client: qdrantClient,
                 collectionName,
             });
+            console.log(`[vectorStore] Created new collection '${collectionName}' for user '${uid}'.`);
             storeCache.set(uid, created);
             return created;
         } catch (inner: any) {

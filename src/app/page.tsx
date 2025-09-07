@@ -74,9 +74,9 @@ export default function Home() {
   useEffect(() => () => { Object.values(pollIntervals.current).forEach(clearInterval) }, [])
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] w-screen flex">
+  <div className="h-[calc(100vh-4rem)] w-full flex overflow-hidden">
       {/* Left column: viewer (top), documents list (middle), upload drop zone (bottom) */}
-      <aside className="w-[55vw] min-h-full border-r border-[var(--border-color)] bg-[var(--surface-alt)]/40 backdrop-blur-sm flex flex-col overflow-hidden">
+  <aside className="w-[55vw] h-full border-r border-[var(--border-color)] bg-[var(--surface-alt)]/40 backdrop-blur-sm flex flex-col overflow-hidden">
         {/* Viewer */}
         <div className="h-[55vh] border-b border-[var(--border-color)] p-3 flex flex-col">
           {currentDocument ? (
@@ -130,7 +130,7 @@ export default function Home() {
         </div>
       </aside>
       {/* Right side chat UI */}
-      <main className="flex-1 min-h-full flex flex-col p-6">
+  <main className="flex-1 flex flex-col p-6 h-full overflow-hidden">
         <ChatPanel
           disabled={!currentDocument || currentDocument.status !== 'indexed'}
           currentDocumentName={currentDocument?.file.name || null}

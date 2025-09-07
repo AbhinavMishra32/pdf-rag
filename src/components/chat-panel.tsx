@@ -41,35 +41,36 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
     if (!q || isSending || disabled) return;
     setIsSending(true);
 
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', text: q };
-    const pendingAssistant: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', text: 'Thinking...', isLoading: true };
-    setMessages(prev => [...prev, userMessage, pendingAssistant]);
-    setQuestionInput('');
+      const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', text: q };
+      const pendingAssistant: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', text: 'Thinking...', isLoading: true };
+      const historyPayload = messages.map(m => ({ role: m.role, text: m.text })).slice(-12); // last 12 messages max
+      setMessages(prev => [...prev, userMessage, pendingAssistant]);
+      setQuestionInput('');
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, userId: user?.id })
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || 'Request failed');
-      setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
-        ...m,
-        text: json.message || '(no answer)',
-        sources: Array.isArray(json.sources) ? json.sources : [],
-        isLoading: false
-      } : m));
-    } catch (err: any) {
-      setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
-        ...m,
-        text: err?.message || 'Error getting answer',
-        isLoading: false,
-        isError: true
-      } : m));
-    } finally {
-      setIsSending(false);
-    }
+      try {
+          const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload })
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json?.message || 'Request failed');
+          setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
+              ...m,
+              text: json.message || '(no answer)',
+              sources: Array.isArray(json.sources) ? json.sources : [],
+              isLoading: false
+          } : m));
+      } catch (err: any) {
+          setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
+              ...m,
+              text: err?.message || 'Error getting answer',
+              isLoading: false,
+              isError: true
+          } : m));
+      } finally {
+          setIsSending(false);
+      }
   }, [questionInput, isSending, disabled]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -79,15 +80,59 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
     }
   };
 
+  // Turn citations like [Doc 1 p8, Doc 2 p4] into inline clickable tags
+  function renderAssistantText(text: string, sources?: SourceItem[]) {
+    if (!text) return null;
+    const parts: React.ReactNode[] = [];
+    const regex = /\[(Doc[^\]]+)\]/g; // capture bracket groups containing Doc references
+    let lastIndex = 0; let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      const before = text.slice(lastIndex, match.index);
+      if (before) parts.push(<span key={parts.length}>{before}</span>);
+      const inside = match[1];
+      const tokens = inside.split(/[;,]/).map(t => t.trim()).filter(Boolean);
+      parts.push(
+        <span key={parts.length} className="inline-flex flex-wrap gap-1 align-middle ml-1 mr-1">
+          {tokens.map(tok => {
+            const m = /Doc\s+(\d+)(?:\s*p(\d+))?/i.exec(tok);
+            if (!m) return <span key={tok} className="text-[10px] opacity-60">[{tok}]</span>;
+            const docNum = Number(m[1]);
+            const pageNum = m[2] ? Number(m[2]) : undefined;
+            let source = sources?.find(s => s.doc === docNum);
+            if (!source) {
+              source = { doc: docNum, page: pageNum ?? null, snippet: '' };
+            } else if (pageNum && source.page !== pageNum) {
+              // create a shallow clone with adjusted page if model cited a specific page variant
+              source = { ...source, page: pageNum };
+            }
+            const label = `Doc ${docNum}${pageNum ? ` p${pageNum}` : source.page ? ` p${source.page}` : ''}`;
+            return (
+              <button
+                key={tok+parts.length}
+                type="button"
+                onClick={() => onSelectSource?.(source!)}
+                className="text-[10px] px-2 py-0.5 rounded border bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+              >{label}</button>
+            );
+          })}
+        </span>
+      );
+      lastIndex = regex.lastIndex;
+    }
+    const tail = text.slice(lastIndex);
+    if (tail) parts.push(<span key={parts.length}>{tail}</span>);
+    return parts;
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full max-h-screen">
       <div className="flex items-center justify-between pb-3 border-b border-[var(--border-color)]">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Ask Questions</h2>
           <p className="text-[11px] text-[var(--foreground)]/55">{currentDocumentName ? `Selected: ${currentDocumentName}` : 'No document selected'}</p>
         </div>
       </div>
-      <div ref={listRef} className="flex-1 overflow-y-auto space-y-4 py-4 pr-2">
+  <div ref={listRef} className="flex-1 overflow-y-auto space-y-4 py-4 pr-2">
         {messages.length === 0 && (
           <div className="text-[12px] text-[var(--foreground)]/50 leading-relaxed max-w-md">
             Ask about the content of your uploaded documents. If the answer is not in them the model will say it does not know.
@@ -101,21 +146,9 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
                 className={`max-w-[75%] rounded-md border p-3 text-sm shadow-sm ${isUser ? 'bg-indigo-600 text-white border-indigo-600/70' : 'bg-[var(--surface)]/40 border-[var(--border-color)]'}`}
               >
                 <div className={`text-[10px] uppercase tracking-wide font-medium mb-1 ${isUser ? 'text-white/70' : 'text-[var(--foreground)]/50'}`}>{isUser ? 'You' : 'Assistant'}</div>
-                <p className={`whitespace-pre-wrap leading-relaxed ${msg.isError ? (isUser ? 'text-red-200 dark:text-red-300' : 'text-red-600 dark:text-red-400') : ''}`}>{msg.text}</p>
-                {!isUser && msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {msg.sources.map(s => (
-                      <button
-                        type="button"
-                        onClick={() => onSelectSource?.(s)}
-                        key={s.doc+':'+s.page}
-                        className="text-[10px] px-2 py-1 rounded bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                      >
-                        Doc {s.doc}{s.page !== null ? ` p${s.page}` : ''}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <p className={`whitespace-pre-wrap leading-relaxed ${msg.isError ? (isUser ? 'text-red-200 dark:text-red-300' : 'text-red-600 dark:text-red-400') : ''}`}>
+                  {isUser ? msg.text : renderAssistantText(msg.text, msg.sources)}
+                </p>
                 {msg.isLoading && (<div className={`mt-2 text-[10px] ${isUser ? 'text-white/70' : 'text-[var(--foreground)]/40'}`}>Loading…</div>)}
               </div>
             </div>

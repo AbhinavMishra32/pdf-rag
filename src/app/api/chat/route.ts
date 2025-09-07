@@ -1,9 +1,14 @@
 import { vectorStore } from "@/lib/vectorStore";
 import OpenAI from "openai";
 
+type HistoryItem = { role: 'user' | 'assistant'; text: string };
+
 export async function POST(request: Request) {
-    const { question, userId } = await request.json().catch(() => ({}));
+    const { question, userId, history } = await request.json().catch(() => ({}));
     const userQuery = typeof question === "string" ? question.trim() : "";
+    const historyItems: HistoryItem[] = Array.isArray(history)
+        ? history.filter((h: any) => (h?.role === 'user' || h?.role === 'assistant') && typeof h?.text === 'string').slice(-12)
+        : [];
 
     if (!userQuery) {
         return new Response(
@@ -45,9 +50,8 @@ export async function POST(request: Request) {
                 .join("\n")
             : "(no snippets)";
 
-        const systemPrompt = `Answer the question using ONLY the text in the snippets below.
+        const systemPrompt = `Answer the question using the text in the snippets below.
 When you use information from a snippet, cite it inline right after that sentence like [Doc 2 p63].
-If the answer is not clearly present, reply exactly: "I don't know based on the stored documents."
 Write a concise but complete answer that may synthesize across multiple snippets.
 
 Snippets:
@@ -56,10 +60,12 @@ ${contextText}
 Question: ${userQuery}`;
 
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const pastMessages = historyItems.map(h => ({ role: h.role, content: h.text })).slice(-8); // trim to avoid context bloat
         const chat = await client.chat.completions.create({
-            model: "gpt-4.1-mini",
+            model: "",
             messages: [
                 { role: "system", content: systemPrompt },
+                ...pastMessages,
                 { role: "user", content: userQuery },
             ],
         });

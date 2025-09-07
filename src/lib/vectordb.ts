@@ -15,7 +15,7 @@ function createClient() {
 	});
 }
 
-export const embeddings = new OpenAIEmbeddings(process.env.OPENAI_API_KEY ? { openAIApiKey: process.env.OPENAI_API_KEY } : {});
+export const embeddings = new OpenAIEmbeddings(process.env.OPENAI_API_KEY ? { openAIApiKey: process.env.OPENAI_API_KEY, model: 'text-embedding-3-small' } : {});
 
 export const qdrantClient = createClient();
 export type OptionalQdrantClient = QdrantClient
