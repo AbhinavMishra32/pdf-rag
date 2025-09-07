@@ -129,7 +129,7 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                         </span>
                     </label>
                 )}
-                                {file && (
+                {file && (
                     <div className="flex flex-col grow">
                         <div className="flex items-start gap-3 rounded-md border border-black/10 dark:border-white/10 p-3 bg-[var(--surface-alt)]/60">
                             <div className="h-10 w-10 rounded-md bg-indigo-500/15 dark:bg-indigo-400/15 flex items-center justify-center">
@@ -137,18 +137,18 @@ export default function FileUpload({ onUpload, file: externalFile, onFileChange,
                             </div>
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium truncate" title={file.name}>{file.name}</p>
-                                                                <p className="text-xs text-[var(--foreground)]/60 flex items-center gap-1">
-                                                                        {file.type || 'Unknown'} · {bytes(file.size)}
-                                                                        {jobState !== 'idle' && (
-                                                                            <span className={
-                                                                                jobState === 'indexed' ? 'text-green-600 dark:text-green-400' : jobState === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'
-                                                                            }>
-                                                                                {jobState === 'processing' && 'Processing'}
-                                                                                {jobState === 'indexed' && 'Indexed'}
-                                                                                {jobState === 'failed' && 'Failed'}
-                                                                            </span>
-                                                                        )}
-                                                                </p>
+                                <p className="text-xs text-[var(--foreground)]/60 flex items-center gap-1">
+                                    {file.type || 'Unknown'} · {bytes(file.size)}
+                                    {jobState !== 'idle' && (
+                                        <span className={
+                                            jobState === 'indexed' ? 'text-green-600 dark:text-green-400' : jobState === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'
+                                        }>
+                                            {jobState === 'processing' && 'Processing'}
+                                            {jobState === 'indexed' && 'Indexed'}
+                                            {jobState === 'failed' && 'Failed'}
+                                        </span>
+                                    )}
+                                </p>
                             </div>
                             <button onClick={reset} aria-label="Remove file" className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                                 <X className="h-4 w-4" />

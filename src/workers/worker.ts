@@ -1,14 +1,14 @@
 import { Worker } from 'bullmq';
 import { connection } from '@/lib/queue';
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { CharacterTextSplitter } from "@langchain/textsplitters";
+import { CharacterTextSplitter, RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { embeddings, qdrantClient } from "@/lib/vectordb";
 import { QdrantVectorStore } from '@langchain/qdrant';
 import { vectorStore } from '@/lib/vectorStore';
 
 const worker = new Worker('file-upload-queue', async job => {
     console.log(`Processing job ${job.id} of type ${job.name}`);
-    const { b64, originalName } = job.data || {};
+    const { b64, originalName, userId } = job.data || {};
     if (!b64) {
         throw new Error(`No base64 data provided for job ${job.id}`);
     }
@@ -19,25 +19,19 @@ const worker = new Worker('file-upload-queue', async job => {
     const loadedPages = await pdfLoader.load(); // raw page-level documents
     console.log(`Loaded ${loadedPages.length} pages from in-memory PDF '${originalName}'`);
 
-    const textSplitter = new CharacterTextSplitter({
-        chunkSize: 100,
-        chunkOverlap: 0,
+    // const textSplitter = new CharacterTextSplitter({
+    //     chunkSize: 100,
+    //     chunkOverlap: 50,
+    // });
+    const textSplitter = new RecursiveCharacterTextSplitter({
+        chunkSize: 500,
+        chunkOverlap: 50,
     });
 
-    const chunkedDocs = await textSplitter.splitDocuments(loadedPages);
-    // console.log(
-    //   'texts:',
-    //   JSON.stringify(
-    //     texts.map((d, i) => ({
-    //       index: i,
-    //       pageContent: d.pageContent,
-    //       metadata: d.metadata,
-    //     })),
-    //     null,
-    //     2
-    //   )
-    // );
-
+    const chunkedDocs = (await textSplitter.splitDocuments(loadedPages)).map(d => {
+        const page = d.metadata?.loc?.pageNumber ?? d.metadata?.page ?? null;
+        return { ...d, metadata: { ...d.metadata, page } } as any;
+    });
 
     try {
         const result = await qdrantClient?.getCollections();
@@ -46,7 +40,8 @@ const worker = new Worker('file-upload-queue', async job => {
         console.warn('Qdrant call failed (skipping):', (err as any)?.message);
     }
 
-    const store = await vectorStore();
+    const store = await vectorStore(userId);
+    console.log(`[worker] Using vector store type: ${store.constructor.name} (user: ${userId || 'guest'})`);
     await store.addDocuments(chunkedDocs);
 
     return { pages: loadedPages.length, originalName, chunks: chunkedDocs.length };

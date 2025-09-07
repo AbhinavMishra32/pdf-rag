@@ -14,11 +14,16 @@ export async function POST(request: Request) {
 
         const arrayBuffer = await file.arrayBuffer();
         const b64 = Buffer.from(arrayBuffer).toString('base64');
+
+        const userIdEntry = formData.get('userId');
+        const userId = typeof userIdEntry === 'string' ? userIdEntry : 'guest';
+
         const job = await myQueue.add('file-upload', {
             b64,
             originalName: file.name,
             size: file.size,
-            mime: file.type || 'application/pdf'
+            mime: file.type || 'application/pdf',
+            userId,
         });
         return new Response(JSON.stringify({ ok: true, jobId: job.id }), {
             status: 200,

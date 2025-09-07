@@ -3,17 +3,22 @@
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { File as FileIcon } from 'lucide-react'
+import ChatPanel from '@/components/chat-panel'
+import PdfView, { PdfViewerHandle } from '@/components/pdf-viewer'
+import { useUser } from '@clerk/nextjs'
 const PdfViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
 
 export default function Home() {
   type DocumentStatus = 'uploading' | 'processing' | 'indexed' | 'failed'
   type DocumentEntry = { id: string; file: File; jobId?: string; status: DocumentStatus }
+  const { user } = useUser();
 
   const [documents, setDocuments] = useState<DocumentEntry[]>([])
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
   const pollIntervals = useRef<Record<string, any>>({})
 
   const currentDocument = documents.find(d => d.id === currentDocumentId) || null
+  const pdfViewerRef = useRef<PdfViewerHandle | null>(null)
 
   function startStatusPolling(jobId: string, documentId: string) {
     if (pollIntervals.current[documentId]) clearInterval(pollIntervals.current[documentId])
@@ -34,12 +39,17 @@ export default function Home() {
   }
 
   async function uploadDocument(file: File) {
+    if (!user) {
+      console.error('Cannot upload document: user not loaded.');
+      return
+    }
     const id = crypto.randomUUID()
     setDocuments(list => [{ id, file, status: 'uploading' }, ...list])
     if (!currentDocumentId) setCurrentDocumentId(id)
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('userId', user.id)
       const response = await fetch('/api/upload', { method: 'POST', body: formData })
       const json = await response.json()
       if (!response.ok || !json.jobId) throw new Error(json.error || 'upload failed')
@@ -57,7 +67,7 @@ export default function Home() {
   }
 
   const [dragActive, setDragActive] = useState(false)
-  function onFileInputChange(e: React.ChangeEvent<HTMLInputElement>) { handleFileList(e.target.files) }
+  function onFileInputChange(e: React.ChangeEvent<HTMLInputElement>): void { handleFileList(e.target.files); }
   function handleDrop(e: React.DragEvent) { e.preventDefault(); setDragActive(false); handleFileList(e.dataTransfer.files) }
   function handleDrag(e: React.DragEvent) { e.preventDefault(); if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true); else if (e.type === 'dragleave') setDragActive(false) }
 
@@ -78,7 +88,7 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex-1 overflow-hidden">
-                <PdfViewer file={currentDocument.file} />
+                <PdfView ref={pdfViewerRef} file={currentDocument.file} />
               </div>
             </div>
           ) : (
@@ -119,23 +129,21 @@ export default function Home() {
           </label>
         </div>
       </aside>
-      {/* Right side placeholder for upcoming chat UI */}
-      <main className="flex-1 min-h-full flex flex-col">
-        <div className="p-6">
-          {!currentDocument && (
-            <div className="mt-10 text-sm text-[var(--foreground)]/60 max-w-md leading-relaxed">
-              <h1 className="text-xl font-semibold mb-3 tracking-tight">Ask Questions (Soon)</h1>
-              Upload one or more PDFs on the left. Select a document to preview it. This area will become an AI chat referencing the selected document.
-            </div>
-          )}
-          {currentDocument && (
-            <div className="text-sm text-[var(--foreground)]/55 space-y-4">
-              <p className="font-medium text-[var(--foreground)]/80">Chat Coming Soon</p>
-              <p>Selected: <span className="font-medium">{currentDocument.file.name}</span>. Status: {currentDocument.status}.</p>
-              <p>When implemented, you will be able to ask contextual questions here and get cited answers.</p>
-            </div>
-          )}
-        </div>
+      {/* Right side chat UI */}
+      <main className="flex-1 min-h-full flex flex-col p-6">
+        <ChatPanel
+          disabled={!currentDocument || currentDocument.status !== 'indexed'}
+          currentDocumentName={currentDocument?.file.name || null}
+          onSelectSource={(s) => {
+            if (s.page != null) {
+              const pageIndex = Math.max(0, (s.page as number) - 1)
+              pdfViewerRef.current?.goToPage(pageIndex)
+            }
+            if (s.snippet) {
+              pdfViewerRef.current?.highlightText(s.snippet)
+            }
+          }}
+        />
       </main>
     </div>
   );
