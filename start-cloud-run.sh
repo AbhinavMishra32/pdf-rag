@@ -14,14 +14,17 @@ cleanup() {
 }
 trap cleanup TERM INT EXIT
 
-# Start worker
+# If we launch a dedicated worker process here, disable embedded autostart
+export ENABLE_EMBEDDED_WORKER=0
+
+# Start worker (background)
 npm run worker &
 WORKER_PID=$!
 echo "[entrypoint] Worker started with PID ${WORKER_PID}"
 
-// Web (foreground)
+# Web (foreground)
 echo "[entrypoint] Launching Next.js on port ${PORT:-8080}"
 npm run start
 
-// Exited
+# Exited
 echo "[entrypoint] Web process exited"

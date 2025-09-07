@@ -30,7 +30,7 @@ ENV PORT=8080
 # Ensure production uses same timezone/utf8
 ENV TZ=UTC
 
-RUN apk add --no-cache libc6-compat dumb-init
+RUN apk add --no-cache libc6-compat dumb-init ca-certificates
 
 # Copy only necessary built assets and node_modules
 COPY --from=builder /app/node_modules ./node_modules
