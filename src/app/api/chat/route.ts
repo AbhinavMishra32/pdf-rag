@@ -5,99 +5,55 @@ type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
 export async function POST(request: Request) {
     const { question, userId, history } = await request.json().catch(() => ({}));
-    const userQuery = typeof question === "string" ? question.trim() : "";
+    const q = typeof question === 'string' ? question.trim() : '';
     const historyItems: HistoryItem[] = Array.isArray(history)
         ? history.filter((h: any) => (h?.role === 'user' || h?.role === 'assistant') && typeof h?.text === 'string').slice(-12)
         : [];
 
-    if (!userQuery) {
-        return new Response(
-            JSON.stringify({
-                message: "No valid question provided.",
-                sources: [],
-            }),
-            {
-                headers: { "Content-Type": "application/json" },
-                status: 400,
-            }
-        );
+    if (!q) {
+        return new Response(JSON.stringify({ message: 'No question provided', sources: [] }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     try {
-    const store = await vectorStore(userId);
-        const results = await store.similaritySearchWithScore(userQuery, 8);
-
-        const sorted = results.sort((a, b) => (a[1] ?? 0) - (b[1] ?? 0));
-        const top = sorted.slice(0, 5);
-
-        const sources = top.map(([doc, score], i) => {
-            const meta = doc?.metadata || {};
-            const page = meta.loc?.pageNumber ?? meta.page ?? null;
-            return {
-                doc: i + 1,
-                page,
-                snippet: (doc.pageContent || "").slice(0, 400),
-                score: typeof score === "number" ? Number(score.toFixed(4)) : null,
-            };
+        const store = await vectorStore(userId);
+        const results = await store.similaritySearchWithScore(q, 8);
+        const sorted = results.sort((a,b)=> (a[1]??0) - (b[1]??0)).slice(0,5);
+        const sources = sorted.map(([doc,_score],i)=>{
+            const meta = doc.metadata || {}; const page = meta.loc?.pageNumber ?? meta.page ?? null;
+            return { doc: i+1, page, snippet: (doc.pageContent||'').slice(0,400) };
         });
-
-        const contextText = sources.length
-            ? sources
-                .map(
-                    (s) =>
-                        `[Doc ${s.doc}${s.page !== null ? ` p${s.page}` : ""}] ${s.snippet}`
-                )
-                .join("\n")
-            : "(no snippets)";
-
-        const systemPrompt = `Answer the question using the text in the snippets below.
-When you use information from a snippet, cite it inline right after that sentence like [Doc 2 p63].
-Write a concise but complete answer that may synthesize across multiple snippets.
-
-Snippets:
-${contextText}
-
-Question: ${userQuery}`;
+        const context = sources.map(s=>`[Doc ${s.doc}${s.page?` p${s.page}`:''}] ${s.snippet}`).join('\n');
+        const systemPrompt = `Use only the provided snippets. Cite like [Doc 2 p5]. If answer not present say: I don't know based on the stored documents.\n\nSnippets:\n${context}\n\nQuestion: ${q}`;
 
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const pastMessages = historyItems.map(h => ({ role: h.role, content: h.text })).slice(-8); // trim to avoid context bloat
-        const chat = await client.chat.completions.create({
-            model: "",
-            messages: [
-                { role: "system", content: systemPrompt },
-                ...pastMessages,
-                { role: "user", content: userQuery },
-            ],
+        const past = historyItems.map(h=>({ role: h.role, content: h.text })).slice(-6);
+        const stream = await client.chat.completions.create({
+            model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+            messages: [ { role:'system', content: systemPrompt }, ...past, { role:'user', content: q } ],
+            stream: true,
+            temperature: 0.2,
         });
 
-        const answer = chat.choices[0].message?.content?.trim() || "";
-
-        const citedDocs = new Set<number>();
-        const citationRegex = /\[Doc\s+(\d+)/g;
-        let match;
-        while ((match = citationRegex.exec(answer)) !== null) {
-            citedDocs.add(Number(match[1]));
-        }
-        const citedSources = sources.filter((s) => citedDocs.has(s.doc));
-
-        return new Response(
-            JSON.stringify({
-                message: answer,
-                sources: citedSources.length ? citedSources : sources, // fallback: return all if none cited
-            }),
-            { headers: { "Content-Type": "application/json" } }
-        );
-    } catch (err: any) {
-        return new Response(
-            JSON.stringify({
-                message: "Error generating response.",
-                error: String(err),
-                sources: [],
-            }),
-            {
-                headers: { "Content-Type": "application/json" },
-                status: 500,
+        const encoder = new TextEncoder();
+        const readable = new ReadableStream({
+            async start(controller) {
+                // send meta first
+                controller.enqueue(encoder.encode(JSON.stringify({ type:'meta', sources }) + '\n'));
+                try {
+                    for await (const part of stream) {
+                        const delta = part.choices?.[0]?.delta?.content;
+                        if (delta) controller.enqueue(encoder.encode(JSON.stringify({ type:'chunk', delta }) + '\n'));
+                    }
+                    controller.enqueue(encoder.encode(JSON.stringify({ type:'done' }) + '\n'));
+                } catch (e:any) {
+                    controller.enqueue(encoder.encode(JSON.stringify({ type:'error', error: e?.message || String(e) }) + '\n'));
+                } finally {
+                    controller.close();
+                }
             }
-        );
+        });
+        return new Response(readable, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+    } catch (err:any) {
+        return new Response(JSON.stringify({ message:'Error generating response', error: String(err) }), { status:500, headers:{'Content-Type':'application/json'} });
     }
 }

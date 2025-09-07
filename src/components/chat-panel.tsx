@@ -48,19 +48,48 @@ export default function ChatPanel({ disabled, currentDocumentName, onSelectSourc
       setQuestionInput('');
 
       try {
-          const res = await fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload })
-          });
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json?.message || 'Request failed');
-          setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
-              ...m,
-              text: json.message || '(no answer)',
-              sources: Array.isArray(json.sources) ? json.sources : [],
-              isLoading: false
-          } : m));
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q, userId: user?.id, history: historyPayload })
+        });
+        if (!res.ok || !res.body) {
+          let errJson: any = {}; try { errJson = await res.json(); } catch {}
+          throw new Error(errJson?.message || 'Request failed');
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accText = '';
+        let currentSources: SourceItem[] = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const evt = JSON.parse(line);
+              if (evt.type === 'meta') {
+                if (Array.isArray(evt.sources)) currentSources = evt.sources;
+                setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, sources: currentSources } : m));
+              } else if (evt.type === 'chunk') {
+                accText += evt.delta;
+                setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, text: accText, sources: currentSources } : m));
+              } else if (evt.type === 'done') {
+                setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, isLoading: false } : m));
+              } else if (evt.type === 'error') {
+                throw new Error(evt.error || 'Stream error');
+              }
+            } catch (e) {
+              // ignore malformed line
+            }
+          }
+        }
+        // finalize if still loading
+        setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? { ...m, isLoading: false } : m));
       } catch (err: any) {
           setMessages(prev => prev.map(m => m.id === pendingAssistant.id ? {
               ...m,
